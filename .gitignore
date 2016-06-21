@@ -1,0 +1,8 @@
+node_modules
+tmp-*
+./index.js
+*.orig
+*.log
+*~
+*.map
+.DS_Store
