@@ -16,7 +16,7 @@ describe('function declaration', function() {
             name: 'a'
           },
           right: {
-            type: 'Literal',
+            type: 'NumericLiteral',
             value: 20
           }
         },
@@ -34,7 +34,7 @@ describe('function declaration', function() {
       }
     }
     const arr = Array.from(produce(tree));
-    expect(arr.length).to.eql(16)
+    expect(arr.length).to.eql(18)
     const rtree = consume(arr)
     expect(rtree).to.eql(tree)
   })

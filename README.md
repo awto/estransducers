@@ -47,7 +47,7 @@ Here is an example of transducer mapping stream values.
 
 function map(fun) {
   return function*(input) {
-    for(let i of input) {
+    for(const i of input) {
       yield fun(i)
     }
   }
@@ -114,6 +114,8 @@ functions:
  * `produce` - takes AST node and returns stream of AST traversal events
  * `consume` - takes stream and build AST node from it
 
+It also exports `Tag` object for default AST field and type names.
+
 Calling `consume` may be not necessary if AST is updated in place, however
 this may be not a good idea.
 
@@ -121,8 +123,10 @@ The event stream is an object with following fields:
  * `enter` - boolean displaying traversal enters node
  * `leave` - boolean displaying traversal exits node
  * `value` - AST node value
- * `pos` - position of previous AST node, either field name or integer if it
-   is array, it is not required for consumer
+ * `pos` - name of the field, it is not a string but
+           a special tag value, the default tags are
+           in `Tag` map exported by the library
+ * `type` - node type tag, like for `pos`
 
 If it is node without children `enter` and `leave` are both true.
 
@@ -130,25 +134,24 @@ Here is an example of variable value substitution transducer.
 
 ```javascript
 function* subst(dict, s) {
-  for(let i of s) {
-    const v = i.value
-    if (v) {
-      if (v.type === "Identifier") {
-        if (i.enter) {
-          const n = dict[v.name]
-          if (n) {
-            yield* produce(n,i.pos)
-            continue
-          }
-        }
-      } else if (v.type === "Scope") {
-        if (i.enter) {
-          dict = Object.create(dict)
-          for (let j in v.names)
-            dict[j] = false
-        } else
-          dict = Object.getPrototypeOf(dict)
+  for(const i of s) {
+    switch (i.type) {
+    case Tag.Identifier:
+      const n = dict[i.value.name]
+      if (n) {
+        if (i.enter)
+          yield* produce(n,i.pos)
+        continue
       }
+      break
+    case Scope:
+      if (i.enter) {
+        dict = Object.create(dict)
+        for (const j in i.value)
+          dict[j] = false
+      } else
+        dict = Object.getPrototypeOf(dict)
+      break
     }
     yield i
   }

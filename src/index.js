@@ -1,4 +1,12 @@
-import {VisitorKeys} from "estraverse"
+import {VISITOR_KEYS} from "babel-types"
+
+export const Tag = {push:{$:"push"},top:{$:"top"},Array:{$:"Array"}}
+
+for(const i in VISITOR_KEYS) {
+  Tag[i] = {$:i}
+  for (const j of VISITOR_KEYS[i])
+    Tag[j] = {$:j}
+}
 
 function isNode(node) {
   if (node == null)
@@ -9,62 +17,46 @@ function isNode(node) {
 export function* produce(node,pos) {
   function* walk(value,pos) {
     if (Array.isArray(value)) {
-      yield {enter: true, leave: false, value, pos}
-      for(let i = 0; i < value.length; ++i)
-        yield* walk(value[i],i)
-      yield {enter: false, leave:true, value, pos}
+      yield {enter: true, leave: false, value, pos, type: Tag.Array}
+      for(const i of value)
+        yield* walk(i,Tag.push)
+      yield {enter: false, leave: true, value, pos, type: Tag.Array}
     } else if (isNode(value)) {
-      const keys = VisitorKeys[value.type]
+      const keys = VISITOR_KEYS[value.type]
+      const type = Tag[value.type]
       if (keys.length) {
-        yield {enter: true, leave: false, value, pos}
-        for(let i of keys)
-          yield* walk(value[i],i)
-        yield {enter: false, leave: true, value, pos}
-      } else {
-        yield {enter: true, leave: true, value, pos}
+        yield {enter: true, leave: false, value, pos, type}
+        for(const i of keys) {
+          const v = value[i]
+          if (v != null)
+            yield* walk(value[i],Tag[i] || i)
+        }
+        yield {enter: false, leave: true, value, pos, type}
       }
-    } else {
-      yield {enter: true, leave: true, value, pos}
     }
   }
-  yield* walk(node,pos)
+  yield* walk(node,pos || Tag.top)
 }
 
 export function consume(s) {
-  const stack = [{keys:["result"],x:0,value:{}}]
-  var cnt = 100
-  for (let i of s) {
+  const stack = [{}]
+  for (const i of s) {
+    if (i.type == null || !Tag[i.type.$])
+      continue
     if (i.enter) {
-      const {keys, x, value} = stack[0]
-      if (keys && x >= keys.length)
-        throw new Error("more fields than expected")
-      if (isNode(i.value)) {
-        const keys = VisitorKeys[i.value.type]
-        if (keys)
-          stack.unshift({value: i.value, keys, x: 0})
-        else
-          continue
-      } else if (Array.isArray(i.value))
-        stack.unshift({value: i.value, keys: false, x: 0})
+      if (i.type === Tag.Array)
+        stack.unshift([])
       else
-        stack.unshift({value:i.value})
+        stack.unshift(i.value)
     }
     if (i.leave) {
-      if (isNode(i.value) && !VisitorKeys[i.value.type])
-        continue
-      const s = stack.shift()
-      const {x,keys,value} = stack[0]
-      value[keys ? keys[x] : x] = i.value
-      stack[0].x = x + 1
-      if (!stack.length) 
-        throw new Error("invalid input stream")
-      if (s.keys && s.keys.length !== s.x) {
-        throw new Error("less fields than expected")
-      }
+      const value = stack.shift()
+      if (i.pos === Tag.push) {
+        stack[0].push(value)
+      } else
+        stack[0][i.pos.$] = value
     }
   }
-  if (stack.length !== 1)
-    throw new Error("invalid input stream")
-  return stack[0].value.result
+  return stack[0].top
 }
 
