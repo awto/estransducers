@@ -32,6 +32,8 @@ export function* produce(node,pos) {
             yield* walk(value[i],Tag[i] || i)
         }
         yield {enter: false, leave: true, value, pos, type}
+      } else {
+        yield {enter: true, leave: true, value, pos, type}
       }
     }
   }

@@ -34,7 +34,7 @@ describe('function declaration', function() {
       }
     }
     const arr = Array.from(produce(tree));
-    expect(arr.length).to.eql(18)
+    expect(arr.length).to.eql(19)
     const rtree = consume(arr)
     expect(rtree).to.eql(tree)
   })
