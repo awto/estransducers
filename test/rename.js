@@ -89,6 +89,7 @@ const rename = R.pipe(
   scope,
   subst({i:{type:"Identifier", name: "j"}}),
   consume,
+  R.prop("top"),
   generate,
   R.prop("code")
 );

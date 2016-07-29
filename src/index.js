@@ -41,26 +41,24 @@ export function* produce(node,pos) {
 }
 
 export function consume(s) {
-  const stack = [{enter:true,leave:true,value:{},pos:Tag.top,type:Tag.top}]
-  const stackTys = []
+  const stack = [{}]
   for (const i of s) {
     if (i.type == null || !Tag[i.type.$])
       continue
     if (i.enter) {
-      stack.unshift(i)
       if (i.type === Tag.Array)
-        i.value = []
+        stack.unshift([])
+      else 
+        stack.unshift(i.value)
     }
     if (i.leave) {
-      const j = stack.shift()
-      if (i.type !== j.type || i.pos !== j.pos)
-        throw new Error(`mismatched type`)
+      const value = stack.shift()
       if (i.pos === Tag.push) {
-        stack[0].value.push(i.value)
+        stack[0].push(value)
       } else
-        stack[0].value[i.pos.$] = i.value
+        stack[0][i.pos.$] = value
     }
   }
-  return stack[0].value.top
+  return stack[0]
 }
 
