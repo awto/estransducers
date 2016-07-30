@@ -46,6 +46,7 @@ export function consume(s) {
     if (i.type == null || !Tag[i.type.$])
       continue
     if (i.enter) {
+      i.value.type = i.type.$
       if (i.type === Tag.Array)
         stack.unshift([])
       else 
