@@ -17,23 +17,25 @@ function isNode(node) {
 export function* produce(node,pos) {
   function* walk(value,pos) {
     if (Array.isArray(value)) {
-      yield {enter: true, leave: false, value, pos, type: Tag.Array}
+      const data = {}
+      yield {enter: true, leave: false, value, pos, type: Tag.Array,data}
       for(const i of value)
         yield* walk(i,Tag.push)
-      yield {enter: false, leave: true, value, pos, type: Tag.Array}
+      yield {enter: false, leave: true, value, pos, type: Tag.Array,data}
     } else if (isNode(value)) {
       const keys = VISITOR_KEYS[value.type]
       const type = Tag[value.type]
       if (keys.length) {
-        yield {enter: true, leave: false, value, pos, type}
+        const data = {}
+        yield {enter: true, leave: false, value, pos, type, data}
         for(const i of keys) {
           const v = value[i]
           if (v != null)
             yield* walk(value[i],Tag[i] || i)
         }
-        yield {enter: false, leave: true, value, pos, type}
+        yield {enter: false, leave: true, value, pos, type, data}
       } else {
-        yield {enter: true, leave: true, value, pos, type}
+        yield {enter: true, leave: true, value, pos, type, data: {}}
       }
     }
   }
@@ -46,7 +48,8 @@ export function consume(s) {
     if (i.type == null || !Tag[i.type.$])
       continue
     if (i.enter) {
-      i.value.type = i.type.$
+      if (!i.value.type)
+        i.value.type = i.type.$
       if (i.type === Tag.Array)
         stack.unshift([])
       else 
