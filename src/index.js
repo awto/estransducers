@@ -1,12 +1,13 @@
 import {VISITOR_KEYS} from "babel-types"
 
-export const Tag = {push:{$:"push"},top:{$:"top"},Array:{$:"Array"}}
+export const Tag = {push:{$:"push"},top:{$:"top"},Array:{$:"Array"},Null:{$:"Null"}}
 
 for(const i in VISITOR_KEYS) {
   Tag[i] = {$:i}
   for (const j of VISITOR_KEYS[i])
     Tag[j] = {$:j}
 }
+
 
 function isNode(node) {
   if (node == null)
@@ -48,12 +49,13 @@ export function consume(s) {
     if (i.type == null || !Tag[i.type.$])
       continue
     if (i.enter) {
-      if (!i.value.type)
-        i.value.type = i.type.$
       if (i.type === Tag.Array)
         stack.unshift([])
-      else 
+      else  {
+        if (i.value != null)
+          i.value.type = i.type.$
         stack.unshift(i.value)
+      }
     }
     if (i.leave) {
       const value = stack.shift()
