@@ -6,3 +6,4 @@ tmp-*
 *~
 *.map
 .DS_Store
+.tern-port
