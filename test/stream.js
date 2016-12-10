@@ -44,7 +44,7 @@ describe("lookahead iterator", function() {
 function toStr(iter) {
   const a = Array.from(iter)
   a[0].pos = a[a.length-1].pos = Tag.top
-  return generate(consume(Kit.traceAll(a)).top,{compact:true}).code
+  return generate(consume(a).top,{compact:true}).code
 }
 
 function compact(str) {
@@ -197,3 +197,30 @@ describe("hierarchical iterator",function() {
 })
 
 
+describe("template",function() {
+  const s = Kit.output()
+  it("should feel the placeholders", function() {
+    function* gen() {
+      const s = Kit.output()
+      s.template(Tag.top,`
+        function $$(a,$$) {
+          $$
+          console.log($$)
+          $E
+        }
+      `)
+      yield s.tok((yield* s.open()),T.identifier("F"))
+      yield s.tok((yield* s.open()),T.identifier("X"))
+      yield* s.toks((yield* s.open()),`*
+                              console.log("hi")
+                              console.log("there")`)
+      yield* s.toks((yield* s.open()),`=a + b`)
+      yield* s.toks((yield* s.open()),`=a = b`)
+      yield* s.leave()
+    }
+    const res = 'function F(a,X){console.log("hi");'+
+        'console.log("there");console.log(a+b);a=b;}'
+    expect(toStr(gen())).to.equal(res)
+    expect(toStr(gen())).to.equal(res)
+  })
+})
