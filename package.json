@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "mocha",
-    "build": "babel src --out-dir=. && babel samples/eager-generators/src --out-dir=samples/eager-generators/lib",
+    "build": "babel src --out-dir=.",
     "prepublish": "npm run build"
   },
   "repository": {

@@ -1,4 +1,4 @@
-node_modules
+.git
 tmp-*
 *.orig
 *.log
@@ -6,5 +6,4 @@ tmp-*
 *.map
 .DS_Store
 .tern-port
-/*.js
-/samples/*.js
+npm-debug.log
