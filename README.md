@@ -122,7 +122,8 @@ this may be not a good idea.
 The event stream is an object with following fields:
  * `enter` - boolean displaying traversal enters node
  * `leave` - boolean displaying traversal exits node
- * `value` - AST node value
+ * `value` - An object with original AST node value in `node` field, it is
+             shared between `enter` and `leave`.
  * `pos` - name of the field, it is not a string but
            a special tag value, the default tags are
            in `Tag` map exported by the library
@@ -137,7 +138,7 @@ function* subst(dict, s) {
   for(const i of s) {
     switch (i.type) {
     case Tag.Identifier:
-      const n = dict[i.value.name]
+      const n = dict[i.value.node.name]
       if (n) {
         if (i.enter)
           yield* produce(n,i.pos)

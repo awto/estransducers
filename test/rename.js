@@ -1,15 +1,15 @@
-import {produce,consume,Tag} from "../src"
+import {produce,consume,Tag,makeTag} from "../src"
 import {parse} from "babylon"
 import generate from "babel-generator"
 import R from "ramda"
 
-const Scope = {$:"Scope"}
+const Scope = makeTag("Scope","ctrl")
 
 const subst = R.curry(function* subst(dict, s) {
   for(const i of s) {
     switch (i.type) {
     case Tag.Identifier:
-      const n = dict[i.value.name]
+      const n = dict[i.value.node.name]
       if (n) {
         if (i.enter)
           yield* produce(n,i.pos)
@@ -40,7 +40,7 @@ function* scope(s) {
         inScope = {}
         stack.push(inScope)
         buf = []
-        for(let j of i.value.params) {
+        for(let j of i.value.node.params) {
           if (j.name)
             inScope[j.name] = false
         }
@@ -63,7 +63,7 @@ function* scope(s) {
       continue;
     case Tag.VariableDeclaration:
       if (i.enter && inScope) {
-        for(const {id} of i.value.declarations)
+        for(const {id} of i.value.node.declarations)
           if (id.name)
             inScope[id.name] = true
       }

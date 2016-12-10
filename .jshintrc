@@ -1,0 +1,9 @@
+{
+ "asi": true,
+ "boss": true,
+ "esversion": 6,
+ "eqnull": true,
+ "node": true,
+ "mocha": true,
+ "module": true
+}

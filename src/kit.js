@@ -1,6 +1,8 @@
 import * as R from "ramda"
 import * as assert from "assert"
-import {produce,consume,Tag} from "./index"
+import {produce,consume,Tag,enter,leave,tok,makeTag} from "./core"
+import * as T from "babel-types"
+import {parse} from "babylon"
 
 /**
  * adds `take` function to ES6 iterators interface
@@ -58,48 +60,100 @@ export class Lookahead extends ExtIterator {
       this._cur = this._inner.next(v)
     return cur
   }
+  take(v) {
+    const cur = this._cur
+    if (cur.done)
+      return null
+    this._cur = this._inner.next(v)
+    return cur.value
+  }
   cur() { return this._cur.done ? undefined : this._cur.value }
 }
 
-export const Output = (ctor,Super) => class Output extends Super {
-  constructor(cont) {
-    super(cont)
-  }
-  enter(pos,type,value) {
-    [pos,type,value] = ctor(pos,type,value)
-    return {enter:true,leave:false,type,pos,value}
-  }
-  leave(pos,type,value) {
-    [pos,type,value] = ctor(pos,type,value)
-    return {enter:false,leave:true,type,pos,value}
-  }
-  tok(pos,type,value) {
-    [pos,type,value] = ctor(pos,type,value)
-    return {enter:true,leave:true,type,pos,value}
-  }
-}
+const ctrlTok = {$:"ctrlTok",kind:"ctrl"}
+const ctrlTokGen = {$:"ctrlTokGen",kind:"ctrl"}
+const storedTok = {$:"storedTok",kind:"ctrl"}
 
-export const Scope = (Super) => class Scope extends Super {
+export const Output = (Super) => class Output extends Super {
   constructor(cont) {
     super(cont)
     this._stack = []
   }
-  *_timStack(len) {
-    yield* this._stack.splice(0,this._stack.length - len)
+  valCtor (pos,type,value) {
+    let node = null
+    if (value == null) { 
+      value = {}
+      if (type != null && type.$ == null) {
+        if (type.node != null) {
+          value = type
+          node = value.node
+          type = null
+        } else if (type.type != null) {
+          node = type
+          value = {node}
+          type = null
+        }
+      }
+    } else
+      node = value.node
+    if (type == null && node != null && node.type != null) {
+      type = Tag[node.type]
+    }
+    if (type == null)
+      type = pos
+    if (node == null) {
+      value.node = node =
+        type === Tag.Array ? [] : type === Tag.Null ? null : {}
+    }
+    return [pos,type,value]
+  }
+  *toks(pos,node) {
+    yield* toks(pos,node)
   }
   enter(pos,type,value) {
-    const r = super.enter(pos,type,value)
-    this._stack.unshift(super.leave(r.pos,r.type,r.value))
-    return r
+    [pos,type,value] = this.valCtor(pos,type,value)
+    this._stack.unshift({$:storedTok,
+                         tok:{enter:false,leave:true,
+                              pos:pos,type:type,value:value}})
+    return {enter:true,leave:false,type,pos,value}
   }
-  leave() {
-    return this._stack.shift()
+  tok(pos,type,value) {
+    [pos,type,value] = this.valCtor(pos,type,value)
+    return {enter:true,leave:true,type,pos,value}
+  }
+  *leave() {
+    let f
+    while((f=this._stack.shift())) {
+      switch(f.$) {
+      case ctrlTok:
+        f.run(this)
+        break
+      case ctrlTokGen:
+        yield* f.run(this)
+        break
+      default:
+        yield f.tok
+        return f.tok
+      }
+    }
   }
   label() {
     const pos = this._stack.length
     const t = this
     return function*() {
-      yield* t._trimStack(pos)
+      const sub = t._stack.splice(0,t._stack.length - pos)
+      for(const i of sub) {
+        switch(i.$) {
+        case ctrlTok:
+          i.run(t)
+          break
+        case ctrlTokGen:
+          yield* i.run(t)
+          break
+        default:
+          yield i.tok
+        }
+      }
     }
   }
 }
@@ -139,11 +193,20 @@ export function Level(Super) {
       const c = super.next(v)
       if (c.done)
         return c
-      // 0(1! 1(2! 2! 2(3! 3! 3!2)1)0)
       const t = c.value
       if (t.enter)
         this.level++
       if (t.leave)
+        this.level--
+      return c
+    }
+    take(v) {
+      const c = super.take(v)
+      if (c == null)
+        return c
+      if (c.enter)
+        this.level++
+      if (c.leave)
         this.level--
       return c
     }
@@ -177,41 +240,14 @@ export function Level(Super) {
 }
 
 export function WithPeel(Super) {
-  const copyTag = {t:"copy"}
+  const copyTag = {$:ctrlTokGen,*run(t){yield t.take();},t:"copy"}
   // means we are to skip next tag from input because it is in the stack already
-  const skipTag = {t:"skip"}
+  const skipTag = {$:ctrlTok,run(t) { t.take(); },t:"skip"}
   // virtual close (already closed in token)
-  const vCloseTag = {t:"vClose"}
-  return class WithPeel extends Scope(Super) {
+  const vCloseTag = {$:ctrlTok,run() {},t:"close"}
+  return class WithPeel extends Super {
     constructor(cont) {
       super(cont)
-    }
-    *_trimStack(len) {
-      const sub = this._stack.splice(0,this._stack.length - len)
-      for(const i of sub)
-        if (i === skipTag)
-          this.take()
-      else if (i !== vCloseTag) {
-        yield i === copyTag ? this.take() : i
-      }
-    }
-    *leave() {
-      for(;;) {
-        const f = this._stack.shift()
-        switch(f) {
-        case copyTag:
-          yield this.take();
-          break
-        case vCloseTag:
-          break
-        case skipTag:
-          this.take()
-          break
-        default:
-          yield f
-          return f
-        }
-      }
     }
     peel(i) {
       if (i == null) 

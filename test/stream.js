@@ -1,8 +1,11 @@
 import {produce,consume,Tag} from "../src"
 import {parse} from "babylon"
 import generate from "babel-generator"
-import * as Kit from "../src/kit"
+import * as T from "babel-types"
 
+import * as Kit from "../src/kit"
+import * as R from "ramda"
+const fs = require("fs")
 
 describe("lookahead iterator", function() {
   const COUNT = 1000
@@ -41,7 +44,7 @@ describe("lookahead iterator", function() {
 function toStr(iter) {
   const a = Array.from(iter)
   a[0].pos = a[a.length-1].pos = Tag.top
-  return generate(consume(a).top,{compact:true}).code
+  return generate(consume(Kit.traceAll(a)).top,{compact:true}).code
 }
 
 function compact(str) {
@@ -50,16 +53,16 @@ function compact(str) {
 
 describe("scoped output", function() {
   function* gen() {
-    const Stream = Kit.Stream({scope:true})
+    const Stream = Kit.Stream({output:true})
     const s = new Stream([])
     const lab = s.label()
     yield s.enter(Tag.top,Tag.FunctionExpression)
     yield s.enter(Tag.params,Tag.Array)
-    yield s.leave()
+    yield* s.leave()
     yield s.enter(Tag.body,Tag.BlockStatement)
     yield s.enter(Tag.body,Tag.Array)
     yield s.enter(Tag.push,Tag.ReturnStatement)
-    yield s.tok(Tag.argument,Tag.NumericLiteral,{value:10})
+    yield s.tok(Tag.argument,T.numericLiteral(10))
     yield* lab()
   }
   it("should auto close all openned elements", function() {
@@ -68,7 +71,7 @@ describe("scoped output", function() {
 })
 
 describe("hierarchical iterator",function() {
-  const Stream = Kit.Stream({level:true,scope:true})
+  const Stream = Kit.Stream({level:true,output:true})
   const prog = `
     function a() {
       const i = 10, j = 20
@@ -100,7 +103,7 @@ describe("hierarchical iterator",function() {
                   s.enter(Tag.top,Tag.BlockStatement),
                   s.enter(Tag.body,Tag.Array),
                   ...s.sub(),
-                  s.leave(), s.leave()]
+                  ...s.leave(), ...s.leave()]
                 expect(s.curLev()).to.equal(null)
                 expect([...s.one()].length).to.equal(0)
                 expect([...s.sub()].length).to.equal(0)
@@ -113,7 +116,7 @@ describe("hierarchical iterator",function() {
               s.enter(Tag.top,Tag.BlockStatement),
               s.enter(Tag.body,Tag.Array),
               ...s.sub(),
-              s.leave(), s.leave()]
+              ...s.leave(), ...s.leave()]
             expect(toStr(j)).to.equal("{let k=i+j;console.log(k);}")
             expect(s.cur().type).to.equal(Tag.Array)
             expect(s.curLev()).to.equal(null)
@@ -126,9 +129,9 @@ describe("hierarchical iterator",function() {
     expect(cnt).to.equal(1)
   })
   context("with peel",function() {
-    it("should manage input level", function() {
+    it("should manage input levels", function() {
       let cnt = 0
-      const Stream = Kit.Stream({level:true,scope:true,peel:true})
+      const Stream = Kit.Stream({level:true,output:true,peel:true})
       const s = new Stream(produce(parse(prog)))
       expect(s.cur().type).to.equal(Tag.File)
       const i = [...(function* (){
@@ -152,7 +155,7 @@ describe("hierarchical iterator",function() {
         yield* s.peelTo(Tag.body)
         expect(s.curLev().pos).to.equal(Tag.push)
         yield s.enter(Tag.push,Tag.IfStatement)
-        yield s.tok(Tag.test,Tag.Identifier,{name:"i"})
+        yield s.tok(Tag.test,T.identifier("i"))
         yield s.enter(Tag.consequent,Tag.BlockStatement)
         yield s.enter(Tag.body,Tag.Array)
         yield* s.sub()
