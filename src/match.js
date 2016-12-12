@@ -1,10 +1,31 @@
 import * as Kit from "./Kit"
 import * as R from "ramda"
-import {Tag,enter,leave,tok} from "./core"
+import {Tag,enter,leave,tok,makeTag} from "./core"
 import * as assert from "assert"
 
-export const Root = {$:"MatchRoot",kind:"ctrl"}
-export const Placeholder = {$:"MatchPlaceholder",kind:"ctrl"}
+export const Root = makeTag("MatchRoot","ctrl")
+export const Placeholder = makeTag("MatchPlaceholder","ctrl")
+
+export const commit = R.pipe(
+  Array.from,
+  function*(s) {
+    const buf = []
+    for(let i of s) {
+      switch(i.type) {
+      case Root:
+        if (!i.value.v.match)
+          continue
+        i = i.value.s
+          ? enter(i.pos,i.type,i.value.v)
+          : leave(i.pos,i.type,i.value.v)
+        break
+      case Placeholder:
+        if (!i.value.v.match)
+          continue
+      }
+      yield i
+    }
+  })
 
 export const inject = R.curry(function match(pat, si) {
   pat = Kit.toArray(Kit.toks(Tag.top,pat))
@@ -113,53 +134,6 @@ export const inject = R.curry(function match(pat, si) {
         }
       }
     },
-    Array.from,
-    function* matchFilter(s) {
-      for(let i of s) {
-        switch(i.type) {
-        case Root:
-          if (!i.value.v.match)
-            continue
-          i = i.value.s
-            ? enter(i.pos,i.type,i.value.v)
-            : leave(i.pos,i.type,i.value.v)
-          break
-        case Placeholder:
-          if (!i.value.v.match)
-            continue
-        }
-        yield i
-      }
-    }/*,
-    function matchFin(si) {
-      const s = auto(si)
-      function* walk() {
-        for(const i of s.sub()) {
-          if (i.type === Placeholder) {
-            if (i.value.name === "B") {
-              if (i.enter) {
-                const lab = s.label()
-                const j = s.cur()
-                if (j.type === Tag.BlockStatement) {
-                  yield s.peel()
-                  yield* s.peelTo(Tag.body)
-                  yield s.enter(Tag.push,i.type,i.value)
-                } else {
-                  yield s.enter(i.pos,Tag.BlockStatement)
-                  yield s.enter(Tag.body,Tag.Array)
-                  yield s.enter(Tag.push,i.type,i.value)
-                  yield s.peel(setPos(s.take(),Tag.push))
-                }
-                yield* walk()
-                yield* lab()
-              }
-              continue
-            }
-          }
-          yield i
-        }
-      }
-      return walk()
-    }*/
+    commit
   )(si)
 })
