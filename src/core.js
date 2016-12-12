@@ -108,7 +108,12 @@ export function consume(s) {
     if (i.enter) {
       if (i.type === Tag.Array)
         stack.unshift([])
-      else  {
+      //TODO: another step to handle nulls
+      else if (i.type === Tag.Null) {
+        if (i.pos !== Tag.push)
+          stack[0][i.pos.$] = null
+        continue
+      } else {
         if (i.value != null)
           i.value.node.type = i.type.$
         stack.unshift(i.value.node)
