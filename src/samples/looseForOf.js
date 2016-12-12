@@ -31,9 +31,10 @@ export default R.pipe(
       }
       yield* s.leave()
     }
-    function* walk() {
+    function* walk(label) {
       for(const i of s.sub()) {
-        if (i.type === Match.Root) {
+        switch(i.type) {
+        case Match.Root:
           if (i.enter) {
             Kit.skip(s.till(v => v.enter && v.type === Match.Placeholder))
             const decls = [...s.sub()]
@@ -50,13 +51,13 @@ export default R.pipe(
                const _arr = e$y$arr(_e);
                if (_arr != null) {
                   const _len = _arr.length;
-                  for(let _i = 0; _i < _len; ++_i) {
+                  $$: for(let _i = 0; _i < _len; ++_i) {
                     $$;
                     $$;
                   }
                } else {
                  const _iter = _e[Symbol.iterator]()
-                 for(let _i = _iter.next(); !_i.done; _i = _iter.next()) {
+                 $$: for(let _i = _iter.next(); !_i.done; _i = _iter.next()) {
                    $$;
                    $$;
                  }
@@ -67,15 +68,51 @@ export default R.pipe(
             yield* init
             yield* s.leave()
             yield* s.open()
+            yield s.tok(Tag.label,label == null ? Tag.Null : T.identifier(label))
+            yield* s.open()
             yield* walkDecls(decls,"=_arr[_i]")
             yield* s.open()
             yield* body
+            yield* s.open()
+            yield s.tok(Tag.label,label == null ? Tag.Null : T.identifier(label))
             yield* s.open()
             yield* walkDecls([...Kit.clone(decls)],"=_i.value")
             yield* s.open()
             yield* Kit.clone(body)
             yield* lab()
           }
+          continue
+        case Tag.LabeledStatement:
+          const lab = s.label()
+          const buf = [s.peel(i),...s.one()]
+          if (s.cur().type === Match.Root) {
+            yield* walk(i.value.node.label.name)
+            Kit.skip(lab())
+          } else {
+            yield* buf
+            yield* walk()
+            yield* lab()
+          }
+          continue
+        }
+        yield i
+      }
+    }
+    return walk()
+  },
+  function removeEmptyLabels(si) {
+    const s = Kit.auto(si)
+    function* walk() {
+      for(const i of s.sub()) {
+        if (i.enter && i.type === Tag.LabeledStatement
+            && s.cur().type === Tag.Null)
+        {
+          s.peel(i)
+          Kit.skip(s.one())
+          yield s.enter(i.pos,Kit.Subst)
+          yield* walk()
+          yield* s.leave()
+          Kit.skip(s.leave())
           continue
         }
         yield i

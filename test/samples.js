@@ -191,4 +191,31 @@ describe("extra loose for-ofs", function() {
       }
     }`))
   })
+  it("sample5", function() {
+    expect(run(`function a() {
+      var i
+      loo: for(i of a)
+        zzz
+    }`)).to.equal(pretty(`function a() {
+      var i
+      {
+        const _e = a;
+        const _arr = e$y$arr(_e);
+        if (_arr != null) {
+          const _len = _arr.length;
+          loo: for (let _i = 0; _i < _len; ++_i) {
+            i = _arr[_i];
+            zzz;
+          }
+        } else {
+          const _iter = _e[Symbol.iterator]();
+          loo: for (let _i = _iter.next(); !_i.done; _i = _iter.next()) {
+            i = _i.value;
+            zzz;
+          }
+        }
+      }
+    }`))
+  })
+  
 })
