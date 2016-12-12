@@ -47,6 +47,55 @@ describe("join member expression", function() {
   })
 })
 
+describe("eager generators", function() {
+  const run = R.pipe(
+    R.invoker(0,"toString"),
+    parse,
+    produce,
+    eagerGenerators,
+    consume,
+    R.prop("top"),
+    gen)
+  it("sample1", function() {
+    expect(run(`
+      function* a() {
+        function* b() {
+          yield* arguments
+          yield 10
+        }
+        yield* b()
+      }
+      //@LAZY
+      function* a() {
+        function* b() {
+          yield* arguments
+          yield 10
+        }
+        yield* b()
+      }
+    `)).to.equal(pretty(
+      `function a() {
+        return e$y$make(e$y$buf => {
+          function b() {
+            var e$y$arguments = arguments;
+            return e$y$make(e$y$buf => {
+              e$y$star(e$y$buf, e$y$arguments);
+              e$y(e$y$buf, 10);
+            });
+          }
+          e$y$star(e$y$buf, b()); });
+      }
+      //@LAZY
+      function* a() {
+        function* b() {
+          yield* arguments;
+          yield 10;
+        }
+        yield* b();
+      }`))
+  })
+})
+  
 describe("extra loose for-ofs", function() {
   const run = R.pipe(
     R.invoker(0,"toString"),
