@@ -6,8 +6,9 @@ import * as R from "ramda"
 import eagerGenerators from "../src/samples/eagerGenerators"
 import joinMemExprs from "../src/samples/joinMemExprs"
 import looseForOf from "../src/samples/looseForOf"
+import instrumentation from "../src/samples/instrumentation"
 
-const gen = ast => generate(ast,{retainLines:false,concise:true}).code
+const gen = ast => generate(ast,{retainLines:false,concise:true,quotes:"'"}).code
 const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)
 
 describe("join member expression", function() {
@@ -44,6 +45,129 @@ describe("join member expression", function() {
         console.log(a$a, a$c, b$a, d);
       }
     }`))
+  })
+})
+
+describe("instrumentation", function() {
+  const run = R.pipe(
+    R.invoker(0,"toString"),
+    parse,
+    produce,
+    instrumentation,
+    consume,
+    R.prop("top"),
+    gen)
+  it("sample1", function() {
+    expect(run(`function a() {
+      function* b() {
+        console.log("1")
+      }
+      class C {
+        vo() {
+         console.log("Z")
+        }
+        //@NOPROF
+        no() {
+          console.log("Z")
+        }
+      }
+      c(v => v + 1, 
+        v => {return v + 1},
+        function(v) { return v + 1 })
+    }`)).to.equal(pretty(`function a() {
+      return e$y$prof("a@?", "1[0]",
+                      function () {
+                        function b() {
+                          return e$y$prof$g("a.b@?", "2[6]",
+                                            function* () {
+                                              console.log("1");
+                                            });
+                        }
+                        class C {
+                          vo() { return e$y$prof("a.C.vo@?", "6[8]",
+                                                 function () {
+                                                   console.log("Z");
+                                                 });
+                               }
+                          //@NOPROF
+                          no() { console.log("Z"); }
+                        }
+                        c(
+                          v => {
+                            return e$y$prof("a.F0@?", "14[8]",
+                                            function () { return v + 1; });
+                          },
+                          v => { return e$y$prof("a.F1@?", "15[8]",
+                                                 function () { return v + 1; }); },
+                          function (v) {
+                            return e$y$prof("a.F2@?", "16[8]",
+                                            function () { return v + 1; }); }
+                        );
+                      });
+    }`))
+  })
+  context('with `this` or `arguments`', function() {
+    it("sample2", function() {
+      expect(run(`function a() {
+      function* b() {
+        console.log("1",this,arguments)
+      }
+      class C {
+        vo() {
+         console.log("Z",this)
+        }
+      }
+      c(v => v + this.id + arguments[0], 
+        v => {return v + this.id + arguments[0]},
+        function x(v) {return v + this.id + arguments[0]})
+    }`)).to.equal(pretty(
+      `function a() {
+        return e$y$prof("a@?", "1[0]",
+                        function () {
+                          function b() {
+                            const e$y$this = this;
+                            const e$y$arguments = arguments;
+                            return e$y$prof$g("a.b@?", "2[6]",
+                                              function* () {
+                                                console.log("1", e$y$this, e$y$arguments); });
+                          }
+                          class C {
+                            vo() {
+                              const e$y$this = this;
+                              return e$y$prof("a.C.vo@?", "6[8]",
+                                              function () {
+                                                console.log("Z", e$y$this);
+                                              });
+                            }
+                          }
+                          c(
+                            v => {
+                              const e$y$this = this;
+                              const e$y$arguments = arguments;
+                              return e$y$prof("a.F0@?", "10[8]",
+                                              function () {
+                                                return v + e$y$this.id + e$y$arguments[0];
+                                              });
+                            },
+                            v => {
+                              const e$y$this = this;
+                              const e$y$arguments = arguments;
+                              return e$y$prof("a.F1@?", "11[8]",
+                                              function () {
+                                                return v + e$y$this.id + e$y$arguments[0];
+                                              });
+                            },
+                            function x(v) {
+                              const e$y$this = this;
+                              const e$y$arguments = arguments;
+                              return e$y$prof("a.x@?", "12[8]",
+                                              function () {
+                                                return v + e$y$this.id + e$y$arguments[0];
+                                              });
+                            });
+                        });
+      }`))
+    })
   })
 })
 
