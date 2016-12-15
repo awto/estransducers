@@ -32,8 +32,17 @@ export class ExtIterator {
 export class ArrayLookahead extends ExtIterator {
   constructor(cont) {
     super(cont)
-    this._x = 0
-    this.first = cont[0]
+    let x = 0
+    if (cont.length) {
+      let i = cont[x]
+      if (i.type === Opts) {
+        this.opts = i.value
+        i = cont[++x]
+      } else
+        this.opts = {}
+      this._x = x
+      this.first = i
+    }
   }
   next(v) {
     const c = this._cont[this._x++]
@@ -42,26 +51,45 @@ export class ArrayLookahead extends ExtIterator {
   take(v) {
     return this._cont[this._x++]
   }
+  last() {
+    return this._cont[this._x-1]
+  }
   cur() {
     return this._cont[this._x]
   }
 }
 
+/** 
+ * iterators wrapper keeping a single element lookahead, which may be accessed
+ * with `cur` method
+ *
+ * the iterator may be shared
+ */
 export class Lookahead extends ExtIterator {
   constructor(cont) {
     super(cont)
     this._inner = cont[Symbol.iterator]()
-    this.first = this._cur = this._inner.next()
-    
+    let i = this._inner.next()
+    if (!i.done) {
+      if (i.value.type === Opts) {
+        this.opts = i.value.value
+        i = this._inner.next()
+      } else
+        this.opts = {}
+    }
+    this.first = this._cur = i
+    this._last = null
   }
   next(v) {
     const cur = this._cur
+    this._last = cur.value
     if (!cur.done)
       this._cur = this._inner.next(v)
     return cur
   }
+  last() { return this._last; }
   take(v) {
-    const cur = this._cur
+    const cur = this._last = this._cur
     if (cur.done)
       return null
     this._cur = this._inner.next(v)
@@ -532,18 +560,6 @@ export function* inBlockBody(s,inner) {
   }
 }
 
-export const transform = R.curry(function babelVisitor(pass,ast) {
-  return consume(pass(produce(ast))).top
-})
-
-/**
- * babel plugin visitor methods, typically to be applied only to Program node
- */
-export const babelBridge = R.curry(function babelBridge(pass,path) {
-  
-    consume(pass(produce(path.node)))
-})
-
 export function hasAnnot(node,name) {
   return node.leadingComments
     && node.leadingComments.length
@@ -573,7 +589,11 @@ export function* clone(s) {
   }
 }
 
-function* till(pred, s) {
+/**
+ * leaves all items un-amended until (and including) an item where 
+ * `pred` is true
+ */
+export function* till(pred, s) {
   for(const i of s) {
     yield i
     if (pred(i))
@@ -592,4 +612,89 @@ export const find = R.curry(function* find(pred, s) {
   }
 })
 ExtIterator.prototype.find = function(pred) { return find(pred,this); }
+
+export const Opts = makeTag("Options","ctrl")
+export const UpdateOpts = makeTag("MergeOptions","ctrl")
+
+export function* concat(...args) {
+  for(const i of args)
+    yield* i
+}
+
+
+/**
+ * shares single iterator between several uses
+ */
+export function share(s) {
+  const i = s[Symbol.iterator]()
+  return {
+    [Symbol.iterator] () {
+      return {
+        next(v) {
+          return i.next(v)
+        }
+      }
+    }
+  }
+}
+
+function saveLast(s) {
+  const res = {
+    [Symbol.iterator] () {
+      const i = s[Symbol.iterator]()
+      return {
+        next(v) {
+          return res.cur = i.next(v)
+        }
+      }
+    }
+  }
+  return res
+}
+
+
+
+export const wrap = R.curry(function* wrap(name,f,s) {
+  let last = []
+  const si = auto(s)
+  const iter = f(si)[Symbol.iterator]()
+  for(;;) {
+    try {
+      let {done,value:i} = iter.next()
+      if (done)
+        return i
+      if (i.enter && i.value.node != null && i.value.node.loc != null)
+        last = i.value.node
+      yield i
+    } catch(e) {
+      const last = si.last(), babel = si.opts.babel
+      if (babel != null) {
+        const node
+              = last && last.value.node
+                && last.value.node.loc && last.value.node
+              || last
+              || babel.root.node
+        throw babel.root.hub.file.buildCodeFrameError(
+          node, `${e.message} during ${name}`)
+      }
+      throw e
+    }
+  }
+})
+
+/**
+ * babel plugin visitor methods, typically to be applied only to Program node
+ */
+export const babelBridge = R.curry(function babelBridge(pass,path,state) {
+  const opts = {args:Object.assign({},state.opts),
+                file:Object.assign(state.file.opts),
+                babel:{root:path,state}}
+  consume(pass(concat([tok(Opts,Opts,opts)],produce(path.node))))
+})
+
+export const transform = R.curry(function transform(pass,ast,opts) {
+  if (opts == null)
+    opts = {args:{},file:{},babel:false}
+  return consume(pass(concat([tok(Opts,Opts,opts)],produce(ast)))).top
+})
 
