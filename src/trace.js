@@ -1,10 +1,12 @@
 import * as assert from "assert"
 import generate from "babel-generator"
 import * as T from "babel-types"
+import {Tag} from "./core"
+import chalk from "chalk"
 
 const MAX_TRACE_CODE_LEN = 40
 const TYPE_SIZE = 20
-const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome === true
+const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
 const enterStyles = "background: #222; color: #bada55;font-size:1.5em"
 const leaveStyles = "color: #ee5757; background: black"
 const newTagStyle = "color:purple;font-size:large"
@@ -26,7 +28,7 @@ export function cg(ast, opts = {}) {
         ? T.sequenceExpression(ast)
         : T.blockStatement(ast)
     }
-    res = generate(ast,opts).code
+    res = generate(ast,opts,"").code
   } catch (e) {
     if (ast.type != null)
       console.error(e.stack)
@@ -57,10 +59,25 @@ export function* verify(s) {
     assert.ok(i.pos != null)
     assert.ok(i.type != null)
     assert.ok(i.value != null)
-    if (i.enter && !i.leave)
-      stack.push(i)
+    if (i.enter && stack.length) {
+      const [f,keys] = stack[stack.length-1]
+      if (f.type === Tag.Array) {
+        assert.equal(i.pos, Tag.push)
+      } else if (keys != null) {
+        let k
+        while((k = keys.shift()) != null) {
+          if (Tag[k] === i.pos)
+            break
+        }
+        assert.ok(k,"field name exists")
+      }
+    }
+    if (i.enter && !i.leave) {
+      const keys = T.VISITOR_KEYS[i.type.$]
+      stack.push([i,keys && [...keys]])
+    }
     if (!i.enter && i.leave) {
-      const f = stack.pop()
+      const [f] = stack.pop()
       assert.ok(f != null)
       assert.equal(f.type,i.type)
       assert.equal(f.pos,i.pos)
@@ -78,7 +95,60 @@ function pad(s) {
   return sps + s + sps
 }
 
-function* traceImpl(prefix,s) {
+const traceImpl = BROWSER_DEBUG ? browserTraceImpl : traceNodeImpl
+
+function* traceNodeImpl(prefix, s) {
+  let level = 0
+  let x = 0
+//  prefix = chalk.bold(prefix)
+  for(const i of s) {
+    if (i.enter)
+      level++
+    const dir = chalk.bold(i.leave ? (i.enter ? "|" : "/") : "\\")
+    
+    const clevel = s.level ? `/${s.level}` : ""
+    const descr = `${chalk.green(i.pos.$)}:${
+           chalk.green.bold(i.type.$)}[${level}${clevel}]`
+    let n = ""
+    const {node} = i.value
+    const comments = []
+    let commentsTxt = ""
+    if (i.value.comments) {
+      for(const j of i.obj.comments) {
+        let c = j.txt
+        c = !i.enter(chalk.dim(j.txt)) || j.txt
+      }
+      if (comments.length)
+        commentsTxt = chalk.bold("[") + comments.join(" ") + chalk.bold("]")
+    }
+    if (node != null && i.type !== Tag.Array && i.type.kind !== "ctrl") {
+      n = ccg(node)
+      if (n.length > MAX_TRACE_CODE_LEN)
+        n = n.substr(0,MAX_TRACE_CODE_LEN) + "..."
+      n = chalk.yellow(n)
+      const {loc} = node
+      if (loc != null) {
+        let {source:f,start:s,end:e} = loc
+        n += chalk.blue(` @${f || "?"}-${s.line}:${s.column}..${e.line}:${e.column}`)
+      } else {
+        n += chalk.bold(" @new")
+      }
+    }
+    console.log(
+      prefix,
+      Array(level).join(' '),
+      dir,`${descr}@${x}`,
+      commentsTxt, n)
+    yield i
+    if (i.leave) {
+      level--
+    }
+    x++
+  }
+  console.log(prefix,"len:",x)
+}
+
+function* browserTraceImpl(prefix,s) {
   let level = 0
   let x = 0
   console.log(`%c${pad(prefix)}%c`,
@@ -111,7 +181,7 @@ function* traceImpl(prefix,s) {
       if (comments.length)
         commentsTxt = "[" + comments.join(" ") + "]"
     }
-    if (node != null && i.type.$ !== "Array" && i.type.kind !== "ctrl") {
+    if (node != null && i.type !== Tag.Array && i.type.kind !== "ctrl") {
       n = ccg(node)
       if (n.length > MAX_TRACE_CODE_LEN)
         n = n.substr(0,MAX_TRACE_CODE_LEN) + "..."
