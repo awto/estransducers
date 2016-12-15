@@ -3,6 +3,7 @@ import * as Kit from "../kit"
 import * as R from "ramda"
 import * as T from "babel-types"
 import * as assert from "assert"
+import * as Trace from "../trace"
 
 const Stream = Kit.Stream({peel:true})
 const SpecVars = makeTag("SpecVars","ctrl")
@@ -12,8 +13,8 @@ const specNames = {
 }
 
 export default R.pipe(
-  function* transform(s) {
-    s = Kit.auto(s)
+  Kit.wrap("eager-generators-transform",function* transform(s) {
+//    s = Kit.auto(s)
     function* make(i) {
       i.value.node.generator = false
       const lab = s.label()
@@ -66,7 +67,9 @@ export default R.pipe(
         case Tag.ArrowFunctionExpression:
         case Tag.FunctionDeclaration:
           if (i.enter && i.value.node.generator) {
+            yield i
             yield* make(i)
+            continue
           }
         }
         yield i
@@ -75,6 +78,9 @@ export default R.pipe(
     for(const i of s) {
       yield i
       switch(i.type) {
+      case Tag.Class:
+      case Tag.ClassBody:
+      case Tag.ClassMethod:
       case Tag.FunctionExpression:
       case Tag.ArrowFunctionExpression:
       case Tag.FunctionDeclaration:
@@ -89,9 +95,9 @@ export default R.pipe(
         }
       }
     }
-  },
+  }),
   Array.from,
-  function* completeUniqVars(si) {
+  function* completeSpecVars(si) {
     const s = Kit.auto(si)
     for(const i of s) {
       if (i.type === SpecVars) {
