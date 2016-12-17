@@ -18,8 +18,9 @@ export default R.pipe(
             fv.hasArgs = true
             Kit.skip(s.copy(i))
             yield s.tok(i.pos,T.Identifier("e$y$arguments"))
+            continue
           }
-          continue
+          break
         case Tag.ThisExpression:
           if (fv) {
             fv.hasThis = true

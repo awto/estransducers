@@ -63,11 +63,11 @@ describe("instrumentation", function() {
         console.log("1")
       }
       class C {
-        vo() {
+        vo(a,b) {
          console.log("Z")
         }
         //@NOPROF
-        no() {
+        no(a,b) {
           console.log("Z")
         }
       }
@@ -84,13 +84,13 @@ describe("instrumentation", function() {
                                             });
                         }
                         class C {
-                          vo() { return e$y$prof("a.C.vo@?", "6[8]",
+                          vo(a,b) { return e$y$prof("a.C.vo@?", "6[8]",
                                                  function () {
                                                    console.log("Z");
                                                  });
                                }
                           //@NOPROF
-                          no() { console.log("Z"); }
+                          no(a,b) { console.log("Z"); }
                         }
                         c(
                           v => {
