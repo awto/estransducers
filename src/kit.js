@@ -4,6 +4,8 @@ import {produce,consume,Tag,enter,leave,tok,makeCode} from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
 
+const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
+
 /**
  * adds `take` function to ES6 iterators interface
  * children classes may implement one of `take` or `next` methods
@@ -77,7 +79,9 @@ export class Lookahead extends ExtIterator {
       } else
         this.opts = {}
     }
-    this.first = this._cur = i
+    this._cur = i
+    if (!i.done)
+      this.first = i.value
     this._last = null
   }
   next(v) {
@@ -672,15 +676,16 @@ export const wrap = R.curry(function* wrap(name,f,s) {
         const node
               = last && last.value.node
                 && last.value.node.loc && last.value.node
-              || last
-              || babel.root.node
-        throw babel.root.hub.file.buildCodeFrameError(
-          node, `${e.message} during ${name}`)
+                || last
+                || babel.root.node
+          throw babel.root.hub.file.buildCodeFrameError(
+            node, `${e.message} during ${name}`)
+        }
+        throw e
       }
-      throw e
     }
-  }
-})
+  })
+
 
 /**
  * babel plugin visitor methods, typically to be applied only to Program node
@@ -698,3 +703,15 @@ export const transform = R.curry(function transform(pass,ast,opts) {
   return consume(pass(concat([tok(Opts,Opts,opts)],produce(ast)))).top
 })
 
+/**
+ * copies input stream to output and returns it as array
+ */
+export function* tee(s,buf) {
+  if (buf == null)
+    buf = []
+  for(const i of s) {
+    yield i
+    buf.push(i)
+  }
+  return buf
+}
