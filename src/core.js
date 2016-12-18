@@ -2,19 +2,19 @@ import {VISITOR_KEYS} from "babel-types"
 
 let nameCount = 0
 
-export function makeTag(name,kind) {
+export function makeCode(name,kind) {
   return {$:name,kind,x:nameCount++}
 }
 
-export const Tag = {push:makeTag("push","pos"),
-                    top:makeTag("top","pos"),
-                    Array:makeTag("Array","type"),
-                    Null:makeTag("Null","type")}
+export const Tag = {push:makeCode("push","pos"),
+                    top:makeCode("top","pos"),
+                    Array:makeCode("Array","type"),
+                    Null:makeCode("Null","type")}
 
 for(const i in VISITOR_KEYS) {
-  Tag[i] = makeTag(i,"type")
+  Tag[i] = makeCode(i,"type")
   for (const j of VISITOR_KEYS[i])
-    Tag[j] = makeTag(j,"pos")
+    Tag[j] = makeCode(j,"pos")
 }
 
 function isNode(node) {

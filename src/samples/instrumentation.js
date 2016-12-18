@@ -1,4 +1,4 @@
-import {Tag,makeTag} from "../core"
+import {Tag} from "../core"
 import * as Kit from "../kit"
 import * as Trace from "../trace"
 import * as R from "ramda"

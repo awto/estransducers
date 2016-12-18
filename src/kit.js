@@ -1,6 +1,6 @@
 import * as R from "ramda"
 import * as assert from "assert"
-import {produce,consume,Tag,enter,leave,tok,makeTag} from "./core"
+import {produce,consume,Tag,enter,leave,tok,makeCode} from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
 
@@ -613,8 +613,8 @@ export const find = R.curry(function* find(pred, s) {
 })
 ExtIterator.prototype.find = function(pred) { return find(pred,this); }
 
-export const Opts = makeTag("Options","ctrl")
-export const UpdateOpts = makeTag("MergeOptions","ctrl")
+export const Opts = makeCode("Options","ctrl")
+export const UpdateOpts = makeCode("MergeOptions","ctrl")
 
 export function* concat(...args) {
   for(const i of args)

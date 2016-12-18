@@ -1,4 +1,4 @@
-import {produce,consume,Tag,makeTag} from "../core"
+import {produce,consume,Tag,makeCode} from "../core"
 import * as Kit from "../kit"
 import * as R from "ramda"
 import * as T from "babel-types"
@@ -6,7 +6,7 @@ import * as assert from "assert"
 import * as Trace from "../trace"
 
 const Stream = Kit.Stream({peel:true})
-const SpecVars = makeTag("SpecVars","ctrl")
+const SpecVars = makeCode("SpecVars","ctrl")
 
 const specNames = {
   arguments: true
