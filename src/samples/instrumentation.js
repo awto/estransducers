@@ -8,7 +8,7 @@ import * as assert from "assert"
 export default R.pipe(
   Kit.wrap("instrumentation",function (s) {
     let curId = 0
-    const src = s.opts.file && s.opts.file.relativePath || "?"
+    const src = s.opts.file && s.opts.file.filenameRelative || "?"
     function* walk(pn,fv) {
       for(const i of s.sub()) {
         switch(i.type) {
@@ -40,6 +40,7 @@ export default R.pipe(
           break
         case Tag.FunctionDeclaration:
         case Tag.FunctionExpression:
+        case Tag.ObjectMethod:
         case Tag.ClassMethod:
         case Tag.ArrowFunctionExpression:
           if (i.enter) {
@@ -109,6 +110,7 @@ export default R.pipe(
           case Tag.FunctionExpression:
           case Tag.ArrowFunctionExpression:
           case Tag.ClassMethod:
+          case Tag.ObjectMethod:
             if (i.value.hasThis || i.value.hasArgs) {
               const lab = s.label()
               yield* s.peelTo(Tag.body)

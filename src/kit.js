@@ -656,12 +656,12 @@ function saveLast(s) {
   return res
 }
 
-
-
 export const wrap = R.curry(function* wrap(name,f,s) {
   let last = []
   const si = auto(s)
   const iter = f(si)[Symbol.iterator]()
+  if (si.opts != null)
+    yield si.tok(Opts,Opts,si.opts)
   for(;;) {
     try {
       let {done,value:i} = iter.next()
