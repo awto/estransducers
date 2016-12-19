@@ -331,23 +331,40 @@ export function* toks(pos,s) {
   if (s.substr != null) {
     let r = memo.get(s)
     if (r == null) {
-      let expr = false, list = false
-      if (s[0] === "=") {
-        expr = true
-        s = s.slice(1)
-      } else if (s[0] === "*") {
-        list = true
+      let mod = null
+      switch(s[0]) {
+        // expression
+      case "=":
+        // list
+      case "*":
+        // var declarator
+      case ">":
+        mod = s[0]
         s = s.slice(1)
       }
       const b = parse(s)
       assert.equal(b.type, "File")
       assert.equal(b.program.type, "Program")
-      if (!list)
+      if (!mod === "*")
         assert.equal(b.program.body.length, 1)
-      if (expr) {
+      switch(mod) {
+      case "=":
         assert.equal(b.program.body[0].type, "ExpressionStatement")
         r = b.program.body[0].expression
-      } else if (list) {
+        break
+      case ">":
+        assert.equal(b.program.body[0].type, "ExpressionStatement")
+        const s = b.program.body[0].expression
+        assert.equal(s.type,"AssignmentExpression")
+        r = T.variableDeclarator(s.left,s.right)
+        break
+      case "*":
+        break
+      default:
+        r = b.program.body[0]
+      }
+      if (mod === "=" || mod === ">") {
+      } else if (mod === "*") {
         r = b.program.body
       } else {
         r = b.program.body[0]
