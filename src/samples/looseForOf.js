@@ -6,7 +6,7 @@ import * as assert from "assert"
 import * as Match from "../match"
 
 export default R.pipe(
-  Match.inject(`for($$ of $$) $$`),
+  Match.run(`for($$ of $$) $$`),
   function eagerForOfTransform(si) {
     const s = Kit.auto(si)
     function* walkDecls(decls,txt) {

@@ -27,113 +27,131 @@ export const commit = R.pipe(
     }
   })
 
-export const inject = R.curry(function match(pat, si) {
-  pat = Kit.toArray(Kit.toks(Tag.top,pat))
-  const start = pat[0].type
-  const plen = pat.length
-  return R.pipe(
-    function* match(si) {
-      const s = Kit.lookahead(si)
-      const activePos = []
-      const activeTok = []
-      const activePh = []
-      assert.ok(plen > 1)
-      let level = 0
-      for(let i of s) {
-        if (i.enter) {
-          level++
+export const clean = function* (s) {
+  for(const i of s) {
+    switch(i.type) {
+    case Root:
+    case Placeholder:
+      break
+    default:
+      yield i
+    }
+  }
+}
+
+export const inject = function* matchInject(pattern, si) {
+  const pats = (Array.isArray(pattern) ? pattern : [pattern])
+        .map(i => Kit.toArray(Kit.toks(Tag.top,i)))
+  const starts = new Map(pats.map((i,x) => [i[0].type,x]))
+  const plens = pats.map(i => i.length)
+  assert.equal(plens.filter(v => v === 0).length,0)
+  const s = Kit.lookahead(si)
+  const activePos = []
+  const activeTok = []
+  const activePh = []
+  const activePat = []
+  let level = 0
+  for(let i of s) {
+    if (i.enter) {
+      level++
+    }
+    let aplen = activePos.length
+    for(let p = 0; p < aplen; ++p) {
+      let x = activePos[p]
+      const pat = activePat[p]
+      const plen = pat.length
+      const v = activeTok[p]
+      const ph = activePh[p]
+      if (x !== plen && x !== -1 && activePh[p] == null) {
+        const j = pat[x++]
+        if (x < plen && j.pos != i.pos && j.enter === i.enter) {
+          activePos[p] = -1
+          v.match = false
+          continue
         }
-        let aplen = activePos.length
-        for(let p = 0; p < aplen; ++p) {
+        if (j.enter) {
+          switch(j.type) {
+          case Tag.ExpressionStatement:
+            const k = pat[x]
+            if (k.type === Tag.Identifier) {
+              let block = false
+              if (k.value.node.name[0] === "$") {
+                const ph = activePh[p]
+                      = {v,level,name:k.value.node.name.substr(1)}
+                yield enter(i.pos,Placeholder,ph)
+                x++
+                assert.equal(pat[x].value,k.value)
+                x++
+                assert.equal(pat[x].value,j.value)
+                x++
+                activePos[p] = x
+                continue
+              }
+            }
+            break
+          case Tag.Identifier:
+            let block = false
+            if (j.value.node.name[0] === "$") {
+              const ph = activePh[p]
+                    = {v,level,name:j.value.node.name.substr(1)}
+              yield enter(i.pos,Placeholder,ph)
+              assert.equal(pat[x].value,j.value)
+              x++
+              activePos[p] = x
+              continue
+            }
+          }
+        }
+        if (j.type !== i.type) {
+          activePos[p] = -1
+          v.match = false
+          continue
+        }
+        activePos[p] = x
+      }
+    }
+    if (i.enter) {
+      const s = starts.get(i.type)
+      if (s != null) {
+        const v = {match:null,index:s}
+        yield tok(i.pos,Root,{s:true,v})
+        activePos.push(1)
+        activeTok.push(v)
+        activePat.push(pats[s])
+      }
+    }
+    yield i
+    if (i.leave) {
+      let aplen = activePos.length
+      for(let p = aplen - 1; p >= 0; --p) {
+        let ph = activePh[p]
+        if (ph != null) {
+          if (ph.level === level) {
+            yield leave(i.pos,Placeholder,ph)
+            ph = activePh[p] = null
+          }
+        }
+        if (ph == null) {
           let x = activePos[p]
-          const v = activeTok[p]
-          const ph = activePh[p]
-          if (x !== plen && x !== -1 && activePh[p] == null) {
-            const j = pat[x++]
-            if (x < plen && j.pos != i.pos && j.enter === i.enter) {
-              activePos[p] = -1
-              v.match = false
-              continue
+          if (x >= 0 && x === activePat[p].length) {
+            activePos[p] = -1
+            const v = activeTok[p]
+            v.match = true
+            while(activePos[0] === -1) {
+              activePos.shift()
+              activePh.shift()
+              activeTok.shift()
+              activePat.shift()
             }
-            if (j.enter) {
-              switch(j.type) {
-              case Tag.ExpressionStatement:
-                const k = pat[x]
-                if (k.type === Tag.Identifier) {
-                  let block = false
-                  if (k.value.node.name[0] === "$") {
-                    const ph = activePh[p]
-                          = {v,level,name:k.value.node.name.substr(1)}
-                    yield enter(i.pos,Placeholder,ph)
-                    x++
-                    assert.equal(pat[x].value,k.value)
-                    x++
-                    assert.equal(pat[x].value,j.value)
-                    x++
-                    activePos[p] = x
-                    continue
-                  }
-                }
-                break
-              case Tag.Identifier:
-                let block = false
-                if (j.value.node.name[0] === "$") {
-                  const ph = activePh[p]
-                        = {v,level,name:j.value.node.name.substr(1)}
-                  yield enter(i.pos,Placeholder,ph)
-                  assert.equal(pat[x].value,j.value)
-                  x++
-                  activePos[p] = x
-                  continue
-                }
-              }
-            }
-            if (j.type !== i.type) {
-              activePos[p] = -1
-              v.match = false
-              continue
-            }
-            activePos[p] = x
+            yield tok(i.pos,Root,{s:false,v})
           }
-        }
-        if (i.enter) {
-          if (i.type === start) {
-            const v = {match:null}
-            yield tok(i.pos,Root,{s:true,v})
-            activePos.push(1)
-            activeTok.push(v)
-          }
-        }
-        yield i
-        if (i.leave) {
-          let aplen = activePos.length
-          for(let p = aplen - 1; p >= 0; --p) {
-            let ph = activePh[p]
-            if (ph != null) {
-              if (ph.level === level) {
-                yield leave(i.pos,Placeholder,ph)
-                ph = activePh[p] = null
-              }
-            }
-            if (ph == null) {
-              let x = activePos[p]
-              if (x === plen) {
-                activePos[p] = -1
-                const v = activeTok[p]
-                v.match = true
-                while(activePos[0] === -1) {
-                  activePos.shift()
-                  activePh.shift()
-                  activeTok.shift()
-                }
-                yield tok(i.pos,Root,{s:false,v})
-              }
-            }
-          }
-          level--
         }
       }
-    },
-    commit
-  )(si)
+      level--
+    }
+  }
+}
+
+export const run = R.curry(function(pat,si) {
+  return commit(inject(pat,si))
 })
