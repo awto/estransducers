@@ -39,7 +39,7 @@ export const clean = function* (s) {
   }
 }
 
-export const inject = function* matchInject(pattern, si) {
+export const inject = R.curry(function* matchInject(pattern, si) {
   const pats = (Array.isArray(pattern) ? pattern : [pattern])
         .map(i => Kit.toArray(Kit.toks(Tag.top,i)))
   const starts = new Map(pats.map((i,x) => [i[0].type,x]))
@@ -150,7 +150,7 @@ export const inject = function* matchInject(pattern, si) {
       level--
     }
   }
-}
+})
 
 export const run = R.curry(function(pat,si) {
   return commit(inject(pat,si))

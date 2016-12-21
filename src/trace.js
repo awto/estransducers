@@ -108,7 +108,9 @@ function* traceNodeImpl(prefix, s) {
     
     const clevel = s.level ? `/${s.level}` : ""
     const descr = `${chalk.green(i.pos.$)}:${
-           chalk.green.bold(i.type.$)}[${level}${clevel}]`
+           i.type.ctrl ? chalk.green(i.type.$) 
+                       : chalk.green.bold(i.type.$)
+        }[${level}${clevel}]`
     let n = ""
     const {node} = i.value
     const comments = []
@@ -161,7 +163,25 @@ function* browserTraceImpl(prefix,s) {
       level++
     const dir = i.enter && i.leave ? "\u21c4" : i.enter ? "\u2192" : "\u2190"
     const clevel = s.level ? `/${s.level}` : ""
-    const descr = `${prefix}${i.pos.$}:${i.type.$}[${level}${clevel}]`
+    const tp = i.pos === i.type ? i.type.$ : `${i.pos.$}:${i.type.$}`
+    const descr = `${prefix}${tp}[${level}${clevel}]`
+    let ldescr
+    if (i.pos === i.type) {
+      ldescr = `${prefix}%c${i.type.$}%c[${level}${clevel}]`
+      styles.push(i.type.kind === "ctrl"
+                  ? "color:navy;font-size:large"
+                  : "color:steelblue",
+                  "")
+    } else {
+      ldescr = `${prefix}%c${i.pos.$}:%c${i.type.$}%c[${level}${clevel}]`
+      styles.push(i.pos.kind === "ctrl"
+                  ? "color:olive;font-size:large"
+                  : "color:green")
+      styles.push(i.type.kind === "ctrl"
+                  ? "color:navy;font-size:large"
+                  : "color:steelblue",
+                  "")
+    }
     if (i.enter && !i.leave && console.group != null)
       console.group(descr)
     let n = ""
@@ -176,7 +196,7 @@ function* browserTraceImpl(prefix,s) {
               ? "font-size:small;font-style:italic"
               : "font-weight:bolder"
         const s = `${j.style}${mod}`
-        styles.push(s,'')
+        styles.push(s,"")
       }
       if (comments.length)
         commentsTxt = "[" + comments.join(" ") + "]"
@@ -185,7 +205,7 @@ function* browserTraceImpl(prefix,s) {
       n = ccg(node)
       if (n.length > MAX_TRACE_CODE_LEN)
         n = n.substr(0,MAX_TRACE_CODE_LEN) + "..."
-      n = `%c${n}%c`
+      n = `%c ${n} %c`
       styles.push(i.enter ? enterStyles : leaveStyles,"")
       const {loc} = node
       if (loc != null) {
@@ -197,7 +217,7 @@ function* browserTraceImpl(prefix,s) {
         styles.push(newTagStyle,"")
       }
     }
-    console.log(`%c${dir}%c ${descr}@${x}${commentsTxt} ${n}`,
+    console.log(`%c${dir}%c ${ldescr}@${x}${commentsTxt} ${n}`,
                 dirStyle,"",
                 ...styles,i.value)
     yield i

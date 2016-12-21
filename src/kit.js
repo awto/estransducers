@@ -475,7 +475,10 @@ export function output(s) {
 }
 
 export function skip(s) {
-  for(const i of s){}
+  const iter = s[Symbol.iterator]()
+  let i = iter.next()
+  for(;!i.done;i=iter.next()) {}
+  return i.value
 }
 
 /**
@@ -620,6 +623,7 @@ export function* till(pred, s) {
     if (pred(i))
       return i
   }
+  return null
 }
 ExtIterator.prototype.till = function(pred) { return till(pred,this); }
 
