@@ -1,9 +1,9 @@
-import {produce,consume,Tag,makeCode} from "../src"
+import {produce,consume,Tag,symbol} from "../src"
 import {parse} from "babylon"
 import generate from "babel-generator"
 import R from "ramda"
 
-const Scope = makeCode("Scope","ctrl")
+const Scope = symbol("Scope","ctrl")
 
 const subst = R.curry(function* subst(dict, s) {
   for(const i of s) {

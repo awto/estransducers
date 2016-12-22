@@ -1,10 +1,10 @@
 import * as Kit from "./Kit"
 import * as R from "ramda"
-import {Tag,enter,leave,tok,makeCode} from "./core"
+import {Tag,enter,leave,tok,symbol} from "./core"
 import * as assert from "assert"
 
-export const Root = makeCode("MatchRoot","ctrl")
-export const Placeholder = makeCode("MatchPlaceholder","ctrl")
+export const Root = symbol("MatchRoot","ctrl")
+export const Placeholder = symbol("MatchPlaceholder","ctrl")
 
 export const commit = R.pipe(
   Array.from,

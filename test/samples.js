@@ -8,7 +8,7 @@ import joinMemExprs from "../src/samples/joinMemExprs"
 import looseForOf from "../src/samples/looseForOf"
 import instrumentation from "../src/samples/instrumentation"
 
-const gen = ast => generate(ast,{retainLines:false,concise:true,quotes:"'"}).code
+const gen = ast => generate(ast,{retainLines:false,concise:true},"").code
 const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)
 
 describe("join member expression", function() {

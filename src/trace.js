@@ -1,7 +1,7 @@
 import * as assert from "assert"
 import generate from "babel-generator"
 import * as T from "babel-types"
-import {Tag} from "./core"
+import {Tag,symKind,symName} from "./core"
 import chalk from "chalk"
 
 const MAX_TRACE_CODE_LEN = 40
@@ -73,7 +73,7 @@ export function* verify(s) {
       }
     }
     if (i.enter && !i.leave) {
-      const keys = T.VISITOR_KEYS[i.type.$]
+      const keys = T.VISITOR_KEYS[symName(i.type)]
       stack.push([i,keys && [...keys]])
     }
     if (!i.enter && i.leave) {
@@ -107,9 +107,9 @@ function* traceNodeImpl(prefix, s) {
     const dir = chalk.bold(i.leave ? (i.enter ? "|" : "/") : "\\")
     
     const clevel = s.level ? `/${s.level}` : ""
-    const descr = `${chalk.green(i.pos.$)}:${
-           i.type.ctrl ? chalk.green(i.type.$) 
-                       : chalk.green.bold(i.type.$)
+    const descr = `${chalk.green(symName(i.pos))}:${
+           i.type.ctrl ? chalk.green(symName(i.type)) 
+                       : chalk.green.bold(symName(i.type))
         }[${level}${clevel}]`
     let n = ""
     const {node} = i.value
@@ -123,7 +123,7 @@ function* traceNodeImpl(prefix, s) {
       if (comments.length)
         commentsTxt = chalk.bold("[") + comments.join(" ") + chalk.bold("]")
     }
-    if (node != null && i.type !== Tag.Array && i.type.kind !== "ctrl") {
+    if (node != null && i.type !== Tag.Array && symKind(i.type) !== "ctrl") {
       n = ccg(node)
       if (n.length > MAX_TRACE_CODE_LEN)
         n = n.substr(0,MAX_TRACE_CODE_LEN) + "..."
@@ -163,21 +163,23 @@ function* browserTraceImpl(prefix,s) {
       level++
     const dir = i.enter && i.leave ? "\u21c4" : i.enter ? "\u2192" : "\u2190"
     const clevel = s.level ? `/${s.level}` : ""
-    const tp = i.pos === i.type ? i.type.$ : `${i.pos.$}:${i.type.$}`
+    const tp = i.pos === i.type ? symName(i.type)
+          :`${symName(i.pos)}:${symName(i.type)}`
     const descr = `${prefix}${tp}[${level}${clevel}]`
     let ldescr
     if (i.pos === i.type) {
-      ldescr = `${prefix}%c${i.type.$}%c[${level}${clevel}]`
-      styles.push(i.type.kind === "ctrl"
+      ldescr = `${prefix}%c${symName(i.type)}%c[${level}${clevel}]`
+      styles.push(symKind(i.type) === "ctrl"
                   ? "color:navy;font-size:large"
                   : "color:steelblue",
                   "")
     } else {
-      ldescr = `${prefix}%c${i.pos.$}:%c${i.type.$}%c[${level}${clevel}]`
-      styles.push(i.pos.kind === "ctrl"
+      ldescr = `${prefix}%c${symName(i.pos)}:%c${
+        symName(i.type)}%c[${level}${clevel}]`
+      styles.push(symKind(i.pos) === "ctrl"
                   ? "color:olive;font-size:large"
                   : "color:green")
-      styles.push(i.type.kind === "ctrl"
+      styles.push(symKind(i.type) === "ctrl"
                   ? "color:navy;font-size:large"
                   : "color:steelblue",
                   "")
@@ -201,7 +203,7 @@ function* browserTraceImpl(prefix,s) {
       if (comments.length)
         commentsTxt = "[" + comments.join(" ") + "]"
     }
-    if (node != null && i.type !== Tag.Array && i.type.kind !== "ctrl") {
+    if (node != null && i.type !== Tag.Array && symKind(i.type) !== "ctrl") {
       n = ccg(node)
       if (n.length > MAX_TRACE_CODE_LEN)
         n = n.substr(0,MAX_TRACE_CODE_LEN) + "..."

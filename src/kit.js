@@ -1,6 +1,6 @@
 import * as R from "ramda"
 import * as assert from "assert"
-import {produce,consume,Tag,enter,leave,tok,makeCode} from "./core"
+import {produce,consume,Tag,enter,leave,tok,symbol} from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
 
@@ -102,9 +102,9 @@ export class Lookahead extends ExtIterator {
   cur() { return this._cur.done ? undefined : this._cur.value }
 }
 
-const ctrlTok = {$:"ctrlTok",kind:"ctrl"}
-const ctrlTokGen = {$:"ctrlTokGen",kind:"ctrl"}
-const storedTok = {$:"storedTok",kind:"ctrl"}
+const ctrlTok = Symbol("ctrlTok")
+const ctrlTokGen = Symbol("ctrlTokGen")
+const storedTok = Symbol("storedTok")
 
 export const Output = (Super) => class Output extends Super {
   constructor(cont) {
@@ -115,7 +115,7 @@ export const Output = (Super) => class Output extends Super {
     let node = null
     if (value == null) { 
       value = {}
-      if (type != null && type.$ == null) {
+      if (type != null && typeof type !== "symbol") {
         if (type.node != null) {
           value = type
           node = value.node
@@ -495,7 +495,7 @@ export function setPos(i,pos) {
   return {enter:i.enter,leave:i.leave,type:i.type,pos,value:i.value}
 }
 
-export const Subst = {$:"Subst",kind:"ctrl"}
+export const Subst = symbol("Subst","ctrl")
 
 export function* completeSubst(s) {
   const sl = auto(s)
@@ -599,7 +599,7 @@ export function* clone(s) {
       const isArray = value.isArray = i.type === Tag.Array
       if (isArray)
         value.node = value.node.concat()
-      else if (value.node != null && Tag[i.type.$] != null) {
+      else if (value.node != null && Tag[i.type] != null) {
         value.node = Object.assign({},value.node)
         if (value.node.leadingComments != null)
           value.node.leadingComments = value.node.leadingComments.concat()
@@ -638,8 +638,8 @@ export const find = R.curry(function* find(pred, s) {
 })
 ExtIterator.prototype.find = function(pred) { return find(pred,this); }
 
-export const Opts = makeCode("Options","ctrl")
-export const UpdateOpts = makeCode("MergeOptions","ctrl")
+export const Opts = symbol("Options","ctrl")
+export const UpdateOpts = symbol("MergeOptions","ctrl")
 
 export function* concat(...args) {
   for(const i of args)

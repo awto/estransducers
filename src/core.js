@@ -2,19 +2,39 @@ import {VISITOR_KEYS} from "babel-types"
 
 let nameCount = 0
 
-export function makeCode(name,kind) {
-  return {$:name,kind,x:nameCount++}
+const symbols = {}
+
+export function symInfo(sym) {
+  return symbols[sym]
 }
 
-export const Tag = {push:makeCode("push","pos"),
-                    top:makeCode("top","pos"),
-                    Array:makeCode("Array","type"),
-                    Null:makeCode("Null","type")}
+export function symName(sym) {
+  return symbols[sym].name
+}
+
+export function symKind(sym) {
+  return symbols[sym].kind
+}
+
+export function symbol(name,kind) {
+  const res = Symbol(name)
+  symbols[res] = {name,kind,x:nameCount++}
+  return res
+}
+
+export const Tag = {push:symbol("push","pos"),
+                    top:symbol("top","pos"),
+                    Array:symbol("Array","type"),
+                    Null:symbol("Null","type")}
 
 for(const i in VISITOR_KEYS) {
-  Tag[i] = makeCode(i,"type")
+  Tag[i] = symbol(i,"type")
   for (const j of VISITOR_KEYS[i])
-    Tag[j] = makeCode(j,"pos")
+    Tag[j] = symbol(j,"pos")
+}
+
+for(const i in Tag) {
+  Tag[Tag[i]] = Tag[i]
 }
 
 function isNode(node) {
@@ -78,14 +98,14 @@ function* reproduce(s) {
   const res = []
   for (const i of s) {
     res.push(i)
-    if (i.type == null || !Tag[i.type.$])
+    if (i.type == null || !Tag[Symbol.keyFor(i.type)])
       continue
     if (i.enter) {
       if (i.type === Tag.Array) {
         stack.unshift(i.value.node = [])
       } else  {
         if (i.value != null)
-          i.value.type = i.type.$
+          i.value.type = Symbol.keyFor(i.type)
         stack.unshift(i.value.node)
       }
     }
@@ -94,7 +114,7 @@ function* reproduce(s) {
       if (i.pos === Tag.push) {
         stack[0].push(value)
       } else
-        stack[0][i.pos.$] = value
+        stack[0][Symbol.keyFor(i.pos)] = value
     }
   }
   return res
@@ -103,7 +123,7 @@ function* reproduce(s) {
 export function consume(s) {
   const stack = [{}]
   for (const i of s) {
-    if (i.type == null || !Tag[i.type.$])
+    if (i.type == null || !Tag[i.type])
       continue
     if (i.enter) {
       if (i.type === Tag.Array)
@@ -111,11 +131,11 @@ export function consume(s) {
       //TODO: another step to handle nulls
       else if (i.type === Tag.Null) {
         if (i.pos !== Tag.push)
-          stack[0][i.pos.$] = null
+          stack[0][symName(i.pos)] = null
         continue
       } else {
         if (i.value != null)
-          i.value.node.type = i.type.$
+          i.value.node.type = symName(i.type)
         stack.unshift(i.value.node)
       }
     }
@@ -124,7 +144,7 @@ export function consume(s) {
       if (i.pos === Tag.push) {
         stack[0].push(node)
       } else
-        stack[0][i.pos.$] = node
+        stack[0][symName(i.pos)] = node
     }
   }
   return stack[0]
