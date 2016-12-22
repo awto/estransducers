@@ -5,6 +5,7 @@ import * as T from "babel-types"
 import {parse} from "babylon"
 
 const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
+let _opts = {}
 
 /**
  * adds `take` function to ES6 iterators interface
@@ -34,17 +35,9 @@ export class ExtIterator {
 export class ArrayLookahead extends ExtIterator {
   constructor(cont) {
     super(cont)
-    let x = 0
-    if (cont.length) {
-      let i = cont[x]
-      if (i.type === Opts) {
-        this.opts = i.value
-        i = cont[++x]
-      } else
-        this.opts = {}
-      this._x = x
-      this.first = i
-    }
+    this._x = 0
+    this.first = cont[0]
+    this.opts = _opts
   }
   next(v) {
     const c = this._cont[this._x++]
@@ -72,13 +65,7 @@ export class Lookahead extends ExtIterator {
     super(cont)
     this._inner = cont[Symbol.iterator]()
     let i = this._inner.next()
-    if (!i.done) {
-      if (i.value.type === Opts) {
-        this.opts = i.value.value
-        i = this._inner.next()
-      } else
-        this.opts = {}
-    }
+    this.opts = _opts
     this._cur = i
     if (!i.done)
       this.first = i.value
@@ -681,8 +668,6 @@ export const wrap = R.curry(function* wrap(name,f,s) {
   let last = []
   const si = auto(s)
   const iter = f(si)[Symbol.iterator]()
-  if (si.opts != null)
-    yield si.tok(Opts,Opts,si.opts)
   for(;;) {
     try {
       let {done,value:i} = iter.next()
@@ -712,16 +697,22 @@ export const wrap = R.curry(function* wrap(name,f,s) {
  * babel plugin visitor methods, typically to be applied only to Program node
  */
 export const babelBridge = R.curry(function babelBridge(pass,path,state) {
-  const opts = {args:Object.assign({},state.opts),
+  const optSave = _opts
+  _opts = {args:Object.assign({},state.opts),
                 file:Object.assign(state.file.opts),
                 babel:{root:path,state}}
-  consume(pass(concat([tok(Opts,Opts,opts)],produce(path.node))))
+  consume(pass(produce(path.node)))
+  _opts = optSave
 })
 
 export const transform = R.curry(function transform(pass,ast,opts) {
-  if (opts == null)
-    opts = {args:{},file:{},babel:false}
-  return consume(pass(concat([tok(Opts,Opts,opts)],produce(ast)))).top
+  const optSave = _opts
+  _opts = opts && {args:{},file:{},babel:false}
+  try {
+    return consume(pass(concat([tok(Opts,Opts,opts)],produce(ast)))).top
+  } finally {
+    _opts = optSave
+  }
 })
 
 /**
