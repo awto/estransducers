@@ -625,8 +625,8 @@ export const find = R.curry(function* find(pred, s) {
 })
 ExtIterator.prototype.find = function(pred) { return find(pred,this); }
 
-export const Opts = symbol("Options","ctrl")
-export const UpdateOpts = symbol("MergeOptions","ctrl")
+export const Opts = symbol("Options")
+export const UpdateOpts = symbol("MergeOptions")
 
 export function* concat(...args) {
   for(const i of args)
@@ -727,3 +727,17 @@ export function* tee(s,buf) {
   }
   return buf
 }
+
+
+ExtIterator.prototype.error = function(msg,node) {
+  if (this._name != null)
+    msg += " during " + this._name
+  const babel = this.opts.babel
+  if (babel != null) {
+    const n = node || this._last && this._last.node || babel.root.node
+    return babel.root.hub.file.buildCodeFrameError(node, msg)
+  }
+  return new SyntaxError(msg) 
+}
+
+

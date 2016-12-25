@@ -16,9 +16,14 @@ export function symKind(sym) {
   return symbols[sym].kind
 }
 
-export function symbol(name,kind) {
+export function symbol(name,kind = "ctrl") {
   const res = Symbol(name)
-  symbols[res] = {name,kind,x:nameCount++}
+  symbols[res] = {
+    name,
+    kind,
+    x:nameCount++,
+    func:false
+  }
   return res
 }
 
@@ -32,6 +37,13 @@ for(const i in VISITOR_KEYS) {
   for (const j of VISITOR_KEYS[i])
     Tag[j] = symbol(j,"pos")
 }
+
+symbols[Tag.FunctionExpression].func
+  = symbols[Tag.ArrowFunctionExpression].func
+  = symbols[Tag.FunctionDeclaration].func
+  = symbols[Tag.ClassMethod].func
+  = symbols[Tag.ObjectMethod].func
+  = true
 
 for(const i in Tag) {
   Tag[Tag[i]] = Tag[i]
