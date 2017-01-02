@@ -6,7 +6,7 @@ import chalk from "chalk"
 
 const MAX_TRACE_CODE_LEN = 40
 const TYPE_SIZE = 20
-const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
+export const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
 const enterStyles = "background: #222; color: #bada55;font-size:1.5em"
 const leaveStyles = "color: #ee5757; background: black"
 const newTagStyle = "color:purple;font-size:large"
@@ -62,7 +62,8 @@ export function* verify(s) {
     if (i.enter && stack.length) {
       const [f,keys] = stack[stack.length-1]
       if (f.type === Tag.Array) {
-        assert.equal(i.pos, Tag.push)
+        if (symKind(i.type) !== "ctrl")
+          assert.equal(i.pos, Tag.push)
       } else if (keys != null) {
         let k
         while((k = keys.shift()) != null) {
@@ -200,8 +201,10 @@ function* browserTraceImpl(prefix,s) {
         const s = `${j.style}${mod}`
         styles.push(s,"")
       }
-      if (comments.length)
-        commentsTxt = "[" + comments.join(" ") + "]"
+      if (comments.length) {
+        commentsTxt = "%c[" + comments.join(" ") + "]%c"
+        styles.push("color:green;font-size:large","")
+      }
     }
     if (node != null && i.type !== Tag.Array && symKind(i.type) !== "ctrl") {
       n = ccg(node)
