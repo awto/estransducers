@@ -11,7 +11,7 @@ describe("lookahead iterator", function() {
   const COUNT = 1000
   it("should provide accesst to the next element", function() { 
     const buf = Array.from(Array(COUNT+1).keys())
-    const Stream = Kit.Stream()
+    const Stream = Kit.Stream({input:true})
     const s = new Stream(buf)
     expect(s.cur()).to.equal(0)
     let res = 0
@@ -26,7 +26,7 @@ describe("lookahead iterator", function() {
   context("with array container", function() {
     it("should provide accesst to the next element", function() { 
       const buf = Array.from(Array(COUNT+1).keys())
-      const Stream = Kit.Stream({arr:true})
+      const Stream = Kit.Stream({arr:true,input:true})
       const s = new Stream(buf)
       expect(s.cur()).to.equal(0)
       let res = 0
@@ -54,7 +54,7 @@ function compact(str) {
 describe("scoped output", function() {
   function* gen() {
     const Stream = Kit.Stream({output:true})
-    const s = new Stream([])
+    const s = new Stream()
     const lab = s.label()
     yield s.enter(Tag.top,Tag.FunctionExpression)
     yield s.enter(Tag.params,Tag.Array)

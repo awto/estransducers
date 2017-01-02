@@ -1,4 +1,4 @@
-import * as Kit from "./Kit"
+import * as Kit from "./kit"
 import * as R from "ramda"
 import {Tag,enter,leave,tok,symbol} from "./core"
 import * as assert from "assert"
@@ -42,7 +42,8 @@ export const clean = function* (s) {
 export const inject = R.curry(function* matchInject(pattern, si) {
   const pats = (Array.isArray(pattern) ? pattern : [pattern])
         .map(i => Kit.toArray(Kit.toks(Tag.top,i)))
-  const starts = new Map(pats.map((i,x) => [i[0].type,x]))
+  const starts = pats.map((i,x) => i[0].type)
+  const plen = pats.length
   const plens = pats.map(i => i.length)
   assert.equal(plens.filter(v => v === 0).length,0)
   const s = Kit.lookahead(si)
@@ -90,6 +91,7 @@ export const inject = R.curry(function* matchInject(pattern, si) {
             }
             break
           case Tag.Identifier:
+          case Tag.StringLiteral:
             let block = false
             if (j.value.node.name[0] === "$") {
               const ph = activePh[p]
@@ -100,9 +102,14 @@ export const inject = R.curry(function* matchInject(pattern, si) {
               activePos[p] = x
               continue
             }
+            break
           }
         }
-        if (j.type !== i.type) {
+        if (j.type !== i.type
+            || j.value.node.name !== i.value.node.name
+            || j.value.node.value !== i.value.node.value
+           )
+        {
           activePos[p] = -1
           v.match = false
           continue
@@ -111,13 +118,14 @@ export const inject = R.curry(function* matchInject(pattern, si) {
       }
     }
     if (i.enter) {
-      const s = starts.get(i.type)
-      if (s != null) {
-        const v = {match:null,index:s}
-        yield tok(i.pos,Root,{s:true,v})
-        activePos.push(1)
-        activeTok.push(v)
-        activePat.push(pats[s])
+      for(let s =0; s < plen; ++s) {
+        if (starts[s] == i.type) {
+          const v = {match:null,index:s}
+          yield tok(i.pos,Root,{s:true,v})
+          activePos.push(1)
+          activeTok.push(v)
+          activePat.push(pats[s])
+        }
       }
     }
     yield i

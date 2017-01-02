@@ -7,6 +7,30 @@ import {parse} from "babylon"
 const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
 let _opts = {}
 
+export function optsScope(fun) {
+  const save = _opts
+  try {
+    return fun()
+  } finally {
+    _opts = save
+  }
+}
+
+export function optsScopeLift(fun) {
+  return function() {
+    const save = _opts
+    try {
+      return fun.apply(this,arguments)
+    } finally {
+      _opts = save
+    }
+  }
+}
+
+export function setOpts(opts) {
+  _opts = opts
+}
+
 /**
  * adds `take` function to ES6 iterators interface
  * children classes may implement one of `take` or `next` methods
@@ -35,16 +59,22 @@ export class ExtIterator {
 export class ArrayLookahead extends ExtIterator {
   constructor(cont) {
     super(cont)
+    assert.ok(cont.length > 0,"input iterator should be not-empty")
     this._x = 0
     this.first = cont[0]
-    this.opts = _opts
+    this.opts = this.first.opts || _opts
   }
   next(v) {
     const c = this._cont[this._x++]
+    if (c != null && c.value != null && c.value.opts != null)
+      this.opts = c.value.opts
     return {value:c,done:c == null}
   }
   take(v) {
-    return this._cont[this._x++]
+    const c = this._cont[this._x++]
+    if (c != null && c.opts != null)
+      this.opts = c.opts
+    return c
   }
   last() {
     return this._cont[this._x-1]
@@ -65,17 +95,20 @@ export class Lookahead extends ExtIterator {
     super(cont)
     this._inner = cont[Symbol.iterator]()
     let i = this._inner.next()
-    this.opts = _opts
+    assert.ok(!i.done,"input iterator should be not-empty")
+    this.first = i.value
+    this.opts = this.first.opts || _opts
     this._cur = i
-    if (!i.done)
-      this.first = i.value
     this._last = null
   }
   next(v) {
     const cur = this._cur
     this._last = cur.value
-    if (!cur.done)
+    if (!cur.done) {
+      if (cur.value.value != null && cur.value.value.opts != null)
+        this.opts = cur.value.value.opts
       this._cur = this._inner.next(v)
+    }
     return cur
   }
   last() { return this._last; }
@@ -83,6 +116,8 @@ export class Lookahead extends ExtIterator {
     const cur = this._last = this._cur
     if (cur.done)
       return null
+    if (cur.value.opts != null)
+      this.opts = cur.value.opts
     this._cur = this._inner.next(v)
     return cur.value
   }
@@ -124,6 +159,8 @@ export const Output = (Super) => class Output extends Super {
       value.node = node =
         type === Tag.Array ? [] : type === Tag.Null ? null : {}
     }
+    if (!value.opts)
+      value.opts = this.opts
     return [pos,type,value]
   }
   *toks(pos,node) {
@@ -185,7 +222,7 @@ export function Level(Super) {
     const exit = t.level
     for(const i of t) {
       yield i
-      if (exit === t.level)
+      if (exit >= t.level)
         return
     }
   }
@@ -196,9 +233,9 @@ export function Level(Super) {
     const exit = t.level
     for(const i of t) {
       yield i
-      if (exit === t.level) {
+      if (exit >= t.level) {
         const c = t.cur()
-        if (c == null || !c.enter)
+        if (c == null || !c.enter || exit > t.level)
           return
       }
     }
@@ -329,7 +366,7 @@ export function* toks(pos,s) {
         mod = s[0]
         s = s.slice(1)
       }
-      const b = parse(s)
+      const b = parse(s,{sourceType:"module"})
       assert.equal(b.type, "File")
       assert.equal(b.program.type, "Program")
       if (!mod === "*")
@@ -421,7 +458,9 @@ export function Template(Super) {
 export function Stream(opts) {
   if (opts == null)
     opts = {}
-  let Iterator = opts.arr ? ArrayLookahead : Lookahead
+  let Iterator = opts.input || opts.level || opts.peel
+      ? (opts.arr ? ArrayLookahead : Lookahead)
+      : NoInput
   if (opts.peel || opts.level)
     Iterator = Level(Iterator)
   if (opts.template || opts.output || opts.peel)
@@ -433,8 +472,8 @@ export function Stream(opts) {
   return Iterator
 }
 
-export const LookaheadArrStream = Stream({arr:true})
-export const LookaheadStream = Stream({})
+export const LookaheadArrStream = Stream({arr:true,input:true})
+export const LookaheadStream = Stream({input:true})
 export function lookahead(s) {
   // return Array.isArray(s) ? new LookaheadArrStream(s) : new LookaheadStream(s)
   return new LookaheadStream(s)
@@ -490,7 +529,7 @@ export function* completeSubst(s) {
     for(const i of sl.sub()) {
       if (i.type === Subst) {
         if (i.enter)
-          yield* subst(i.pos)
+          yield* subst(pos)
       } else {
         yield sl.peel(setPos(i,pos))
         yield* walk()
@@ -518,7 +557,7 @@ export function toArray(s) {
 
 export function result(s,buf) {
   const i = s[Symbol.iterator]()
-  for(;;){
+  for(;;) {
     const v = i.next()
     if (v.done)
       return v.value
@@ -709,7 +748,7 @@ export const transform = R.curry(function transform(pass,ast,opts) {
   const optSave = _opts
   _opts = opts && {args:{},file:{},babel:false}
   try {
-    return consume(pass(concat([tok(Opts,Opts,opts)],produce(ast)))).top
+    return consume(pass(produce(ast))).top
   } finally {
     _opts = optSave
   }
@@ -739,5 +778,3 @@ ExtIterator.prototype.error = function(msg,node) {
   }
   return new SyntaxError(msg) 
 }
-
-
