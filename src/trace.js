@@ -1,7 +1,7 @@
 import * as assert from "assert"
 import generate from "babel-generator"
 import * as T from "babel-types"
-import {Tag,symKind,symInfo,symName,resetFieldInfo} from "./core"
+import {Tag,symKind,symInfo,typeInfo,symName,resetFieldInfo} from "./core"
 import chalk from "chalk"
 
 const MAX_TRACE_CODE_LEN = 40
@@ -59,7 +59,7 @@ export function* verify(s) {
     assert.ok(i.pos != null)
     assert.ok(i.type != null)
     assert.ok(i.value != null)
-    const ti = i.value.typeInfo || symInfo(i.type)
+    const ti = typeInfo(i)
     if (i.enter && stack.length) {
       const [f,keys] = stack[stack.length-1]
       if (f.type === Tag.Array) {
@@ -77,8 +77,8 @@ export function* verify(s) {
     if (i.enter && i.value.fieldInfo != null) {
       if (i.type === Tag.Array) {
         assert.ok(i.value.fieldInfo.array,"expected array field")
-      } else if (i.value.typeInfo.kind === "node") {
-        const fts = i.value.fieldInfo.nodeTypes, als = i.value.typeInfo.aliases
+      } else if (ti.kind === "node") {
+        const fts = i.value.fieldInfo.nodeTypes, als = ti.aliases
         assert.ok(fts.has(i.type) || [...fts].find(als.has,als) !== undefined,
                   "field type mismatch")
       }

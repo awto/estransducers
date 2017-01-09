@@ -1,7 +1,8 @@
 import * as R from "ramda"
 import * as Kit from "./kit"
 import * as Trace from "./trace"
-import {Tag,produce,symName,consume,symInfo,resetFieldInfo} from "./core"
+import {Tag,produce,symName,consume,symInfo,
+        resetFieldInfo,typeInfo,removeNulls} from "./core"
 import * as fs from "fs"
 import generate from "babel-generator"
 import * as assert from "assert"
@@ -12,10 +13,14 @@ const BROWSER_DEBUG = Trace.BROWSER_DEBUG
 export function* markNodeType(s) {
   for(const i of s) {
     if (i.enter) {
-      if(i.value.typeInfo && i.value.typeInfo.kind === "ctrl")
-        setComment(i,symName(i.type),"nodetype")
+      const ti = typeInfo(i)
+      if(ti.kind === "ctrl")
+        (i.value.comments || (i.value.comments = []))
+        .unshift({txt:symName(i.type),style:styles.nodetype})
       else if (i.value.comments != null && i.value.comments.length) {
-        setComment(i,symName(i.type).match(/[A-Z]/g).join(""),"nodetype")
+        (i.value.comments || (i.value.comments = []))
+          .unshift({txt:symName(i.type).match(/[A-Z]/g).join(""),
+                    style:styles.nodetype})
       }
     }
     yield i
@@ -32,7 +37,7 @@ export const convertCtrl = R.pipe(
       let last = null
       for(const i of sw) {
         if (i.enter) {
-          const fld = i.value.fieldInfo || {}, ti = i.value.typeInfo
+          const fld = i.value.fieldInfo || {}, ti = typeInfo(i)
           if (i.type !== Tag.Array && ti.kind === "ctrl") {
             s.peel(i)
             const lab = s.label()
@@ -57,13 +62,15 @@ export const convertCtrl = R.pipe(
                 setComment(j,"<","nodetype")
                 copyComment(i,j)
                 let num = 0
+                last = j
                 if (!i.leave) {
                   for(;j!=null;j=s.curLev()) {
                     num++
                     yield* walk(s.one())
+                    last = j
                   }
                   if (num !== 1) {
-                    setEndComment(j,"/"+nm,"nodetype")
+                    setEndComment(last,"/"+nm,"nodetype")
                   }
                 }
               } else {
@@ -89,7 +96,7 @@ export const color = BROWSER_DEBUG
       for(const i of s) {
         if (i.enter && i.value.comments) {
           for (const j of i.value.comments) {
-            if (j.style != null && i.value.typeInfo.kind === "node") {
+            if (j.style != null && typeInfo(i).kind === "node") {
               j.txt = `%c${j.txt}%c`
               j.args = [j.style,""]
             }
@@ -97,7 +104,7 @@ export const color = BROWSER_DEBUG
         }
         if (i.leave && i.value.tcomments) {
           for (const j of i.value.tcomments) {
-            if (j.style != null && i.value.typeInfo.kind === "node") {
+            if (j.style != null && typeInfo(i).kind === "node") {
               j.txt = `%c${j.txt}%c`
               j.args = [j.style,""]
             }
@@ -163,9 +170,16 @@ export const toConsole = R.curry(function toConsole(tag,s) {
     console.groupEnd()
 })
 
+
+export const fin = R.pipe(
+  removeNulls,
+  convertCtrl,
+  Array.from,
+  applyComments,
+  Array.from)
+
 export function toStr(s) {
-  const fin = R.pipe(convertCtrl,Array.from,applyComments,Array.from)(s)
-  consume(fin)
+  consume(fin(s))
   return generate(fin[0].value.node).code
 }
 
@@ -235,5 +249,5 @@ const styles = {
   large: "font-size:xx-large;color:orange",
   small: "font-size:large;color:navy;",
   nodetype: "font-size:xx-small;color:green;font-weight:bolder",
-  none: null
+  none: ""
 }

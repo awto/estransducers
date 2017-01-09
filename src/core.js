@@ -12,6 +12,10 @@ export function symInfo(sym) {
   return symbols.get(sym)
 }
 
+export function typeInfo(i) {
+  return symInfo(i.type)
+}
+
 export const symName = GLOBAL_SYMBOLS
   ? Symbol.keyFor
   : (s) => symbols.get(s).name
@@ -249,10 +253,10 @@ export function* produce(node,pos) {
       yield leave(pos,Tag.Array,value)
     } else if (isNode(node)) {
       const keys = VISITOR_KEYS[node.type]
-      const typeInfo = nodeInfo(node)
-      const type = typeInfo.sym
+      const ti = nodeInfo(node)
+      const type = ti.sym
       if (keys.length) {
-        const value = {node,typeInfo}
+        const value = {node}
         yield enter(pos,type,value)
         for(const i of keys) {
           const v = node[i]
@@ -320,7 +324,7 @@ export function consume(s) {
         continue
       } else {
         if (i.value != null) {
-          const ti = /*i.value.typeInfo ||*/ symInfo(i.type)
+          const ti = typeInfo(i)
           i.value.node.type = ti.esType
           if (ti.fields)
             Object.assign(i.value.node,ti.fields)
@@ -343,7 +347,7 @@ export function* resetFieldInfo(s) {
   const stack = []
   for(const i of s) {
     if (i.enter) {
-      const ti = i.value.typeInfo || (i.value.typeInfo = symbols.get(i.type))
+      const ti = typeInfo(i)
       const f = stack[stack.length-1]
       if (f && f.fieldsMap)
         i.value.fieldInfo = f.fieldsMap.get(i.pos)
@@ -364,3 +368,19 @@ export function* resetFieldInfo(s) {
   }
 }
 
+export function* removeNulls(s) {
+  const stack = []
+  for(const i of s) {
+    if (i.type === Tag.Null) {
+      if (i.enter && i.pos != Tag.push && stack[0]) {
+        stack[0][symName(i.pos)] = null
+      }
+      continue
+    }
+    yield i
+    if (i.enter)
+      stack.unshift(i.value.node)
+    if (i.leave)
+      stack.shift()
+  }
+}
