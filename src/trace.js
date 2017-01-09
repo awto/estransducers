@@ -1,7 +1,7 @@
 import * as assert from "assert"
 import generate from "babel-generator"
 import * as T from "babel-types"
-import {Tag,symKind,symName} from "./core"
+import {Tag,symKind,symInfo,symName,resetFieldInfo} from "./core"
 import chalk from "chalk"
 
 const MAX_TRACE_CODE_LEN = 40
@@ -53,24 +53,34 @@ if (BROWSER_DEBUG) {
 
 export function* verify(s) {
   const stack = []
-  for(const i of s) {
+  for(const i of resetFieldInfo(s)) {
     assert.ok(i.enter != null)
     assert.ok(i.leave != null)
     assert.ok(i.pos != null)
     assert.ok(i.type != null)
     assert.ok(i.value != null)
+    const ti = i.value.typeInfo || symInfo(i.type)
     if (i.enter && stack.length) {
       const [f,keys] = stack[stack.length-1]
       if (f.type === Tag.Array) {
-        if (symKind(i.type) !== "ctrl")
+        if (ti.kind !== "ctrl")
           assert.equal(i.pos, Tag.push)
-      } else if (keys != null) {
+      } else if (keys != null && ti.kind !== "ctrl") {
         let k
         while((k = keys.shift()) != null) {
           if (Tag[k] === i.pos)
             break
         }
         assert.ok(k,"field name exists")
+      }
+    }
+    if (i.enter && i.value.fieldInfo != null) {
+      if (i.type === Tag.Array) {
+        assert.ok(i.value.fieldInfo.array,"expected array field")
+      } else if (i.value.typeInfo.kind === "node") {
+        const fts = i.value.fieldInfo.nodeTypes, als = i.value.typeInfo.aliases
+        assert.ok(fts.has(i.type) || [...fts].find(als.has,als) !== undefined,
+                  "field type mismatch")
       }
     }
     if (i.enter && !i.leave) {
@@ -116,8 +126,9 @@ function* traceNodeImpl(prefix, s) {
     const {node} = i.value
     const comments = []
     let commentsTxt = ""
-    if (i.value.comments) {
-      for(const j of i.obj.comments) {
+    const t = [].concat(i.value.comments || [], i.value.tcomments || [])
+    if (t.length) {
+      for(const j of t) {
         let c = j.txt
         c = !i.enter(chalk.dim(j.txt)) || j.txt
       }
@@ -192,18 +203,20 @@ function* browserTraceImpl(prefix,s) {
     const comments = []
     let commentsTxt = ""
     const commentsStyle = []
-    if (i.value.comments) {
-      for(const j of i.obj.comments) {
+    const t = [].concat(i.value.comments || [], i.value.tcomments || [])
+    if (t.length) {
+      styles.push("color:green;font-size:large")
+      for(const j of t) {
         comments.push(`%c${j.txt}%c`)
         const mod = !i.enter
               ? "font-size:small;font-style:italic"
               : "font-weight:bolder"
-        const s = `${j.style}${mod}`
+        const s = `${j.style || ''}${mod}`
         styles.push(s,"")
       }
       if (comments.length) {
         commentsTxt = "%c[" + comments.join(" ") + "]%c"
-        styles.push("color:green;font-size:large","")
+        styles.push("")
       }
     }
     if (node != null && i.type !== Tag.Array && symKind(i.type) !== "ctrl") {

@@ -1,52 +1,224 @@
-import {VISITOR_KEYS} from "babel-types"
+import {VISITOR_KEYS,NODE_FIELDS,ALIAS_KEYS,BUILDER_KEYS} from "babel-types"
+import * as assert from "assert"
+
+const GLOBAL_SYMBOLS = true
 
 let nameCount = 0
 
-const symbols = {}
+const symbols = new Map()
+const symbolsComputed = new Map()
 
 export function symInfo(sym) {
-  return symbols[sym]
+  return symbols.get(sym)
 }
 
-export function symName(sym) {
-  return symbols[sym].name
+export const symName = GLOBAL_SYMBOLS
+  ? Symbol.keyFor
+  : (s) => symbols.get(s).name
+
+export const newSymbol = GLOBAL_SYMBOLS ? Symbol.for : Symbol
+
+export function nodeInfo(node) {
+  const sym = Tag[node.type]
+  if (node.computed) {
+    const res = symbolsComputed.get(sym)
+    if (res != null)
+      return res
+  }
+  return symbols.get(sym)
 }
 
 export function symKind(sym) {
-  return symbols[sym].kind
+  return symbols.get(sym).kind
+}
+
+export function fieldInfo(type,field) {
+  const e = symbols.get(type)
+  if (e == null || e.fieldsMap == null)
+    return null
+  return e.fieldsMap.get(field)
 }
 
 export function symbol(name,kind = "ctrl") {
-  const res = Symbol(name)
-  symbols[res] = {
+  assert.ok(name && name.substr)
+  assert.ok(isNaN(name))
+  const res = newSymbol(name)
+  symbols.set(res,{
+    sym:res,
     name,
     kind,
-    x:nameCount++,
-    func:false
-  }
+    x:nameCount++
+  })
   return res
 }
 
-export const Tag = {push:symbol("push","pos"),
-                    top:symbol("top","pos"),
-                    Array:symbol("Array","type"),
-                    Null:symbol("Null","type")}
-
-for(const i in VISITOR_KEYS) {
-  Tag[i] = symbol(i,"type")
-  for (const j of VISITOR_KEYS[i])
-    Tag[j] = symbol(j,"pos")
+function symbolDefFor(name, kind) {
+  assert.ok(name && name.substr)
+  assert.ok(isNaN(name))
+  let sym = Tag[name], def
+  if (sym == null) {
+    Tag[name] = sym = newSymbol(name)
+    def = { sym,name,kind,x:nameCount++, expr: false, block: false, key: false,
+            lval: false, decl: false, func: false }
+    if (kind === "node")
+      def.esType = name
+    symbols.set(sym,def)
+  } else {
+    def = symbols.get(sym)
+    assert.ok(def)
+    assert.equal(kind, def.kind, `for ${name}`)
+  }
+  return def
 }
 
-symbols[Tag.FunctionExpression].func
-  = symbols[Tag.ArrowFunctionExpression].func
-  = symbols[Tag.FunctionDeclaration].func
-  = symbols[Tag.ClassMethod].func
-  = symbols[Tag.ObjectMethod].func
-  = true
+export const TypeInfo = {}
+
+export const Tag = {push:symbol("push","pos"),
+                    top:symbol("top","pos"),
+                    Array:symbol("Array","array"),
+                    Null:symbol("Null","ctrl")}
+
+for(const i in VISITOR_KEYS) {
+  const def = TypeInfo[i] = symbolDefFor(i,"node")
+  for(const j of VISITOR_KEYS[i])
+    symbolDefFor(j,"pos").visitor = true
+  for(const j of BUILDER_KEYS[i])
+    symbolDefFor(j,"pos").builder = true
+}
+for(const i in ALIAS_KEYS) {
+  const def = symbolDefFor(i,"node")
+  const aliases = def.aliases || (def.aliases = new Set())
+  const aliasKeys = ALIAS_KEYS[i]
+  if (aliasKeys != null) {
+    for(const j of aliasKeys) {
+      const adef = symbolDefFor(j,"alias");
+      (adef.instances || (adef.instances = new Set())).add(def.sym)
+      aliases.add(adef.sym)
+    }
+  }
+}
+{
+  const idDef = symbols.get(Tag.Identifier)
+  idDef.fieldsMap = new Map([[Tag.name,
+                              {atomicType:"string",
+                               nodeTypes:new Set(),
+                               nillable:false,
+                               enumValues:null,
+                               default: null
+                              }]])
+  const meDef = symbols.get(Tag.MemberExpression)
+  meDef.fieldsMap = new Map([[Tag.property,
+                              {atimicType:null,
+                               nodeTypes:new Set([Tag.Identifier]),
+                               nillable:false,
+                               enumValues:null,
+                               default: null}]])
+}
+
+for(const i in VISITOR_KEYS) {
+  const nodeFields = NODE_FIELDS[i]
+  const def = symbols.get(Tag[i])
+  if (nodeFields != null) {
+    const fieldsMap = def.fieldsMap || (def.fieldsMap = new Map())
+    for(const j in nodeFields) {
+      const jdef = nodeFields[j]
+      const fdef = symbolDefFor(j,"pos")
+      if (fieldsMap.has(fdef.sym))
+        continue
+      const info = getTy(jdef.validate)
+      info.default = jdef.default
+      fieldsMap.set(fdef.sym,info)
+    }
+  }
+  function getTy(ty) {
+    let enumValues = null,
+    nt = new Set(),
+    atomicType = null,
+    nillable = false
+    if (ty != null && ty.chainOf != null) {
+      assert.equal(ty.chainOf.length, 2)
+      if (ty.chainOf[0].type === "array") {
+        const elem = getTy(ty.chainOf[1].each)
+        return {
+          array: true,
+          elem: elem,
+          fieldsMap: new Map([[Tag.push,elem]])
+        }
+      } else if (ty.chainOf[0].type === "string") {
+        assert.ok(ty.chainOf[1].oneOf)
+        enumValues = ty.chainOf[1].oneOf
+        atomicType = "string"
+        ty = null
+      } else {
+        throw new Error("not implemented")
+      }
+    }
+    if (ty != null) {
+      if (ty.type != null) {
+        atomicType = ty.type
+      } else if (ty.oneOfNodeTypes != null) {
+        for(const k of ty.oneOfNodeTypes) {
+          const p = Tag[k]
+          assert.ok(p)
+          nt.add(p)
+        }
+      } else if (ty.oneOf != null) {
+        enumValues = ty.oneOf
+        atomicType = "string"
+      } else if (ty.oneOfNodeOrValueTypes != null) {
+        nt = new Set()
+        for(const k of ty.oneOfNodeOrValueTypes) {
+          if (k === "null") {
+            nillable = true
+          } else {
+            const p = Tag[k]
+            assert.ok(p,`no such type ${k}, ${Object.keys(Tag)}`)
+            nt.add(p)
+          }
+        }
+      } else {
+        atomicType = "any"
+      }
+    }
+    if (enumValues != null) {
+      assert.equal(enumValues.filter(v => v.substr == null).length,0)
+    }
+    return {
+      atomicType,nodeTypes:nt,nillable,enumValues,
+      expr: nt.has(Tag.Expression),
+      stmt: (nt.has(Tag.Statement) || nt.has(Tag.BlockStatement)),
+      block: nt.has(Tag.BlockStatement) && !nt.has(Tag.Statement),
+      key: nt.has(Tag.Identifier) && !nt.has(Tag.Expression),
+      lval: nt.has(Tag.LVal),
+      decl: (nt.has(Tag.VariableDeclaration) || nt.has(Tag.Declaration))
+    }
+  }
+}
+
+for(const i in VISITOR_KEYS) {
+  const def = symbols.get(Tag[i])
+  const aliases = def.aliases
+  def.func = aliases.has(Tag.Function)
+  def.scope = aliases.has(Tag.FunctionParent)
+  def.expr = aliases.has(Tag.Expression)
+  def.decl = aliases.has(Tag.Declaration)
+  def.stmt = aliases.has(Tag.BlockStatement) || aliases.has(Tag.Statement)
+  def.block = aliases.has(Tag.BlockStatement) && !aliases.has(Tag.Statement)
+}
 
 for(const i in Tag) {
   Tag[Tag[i]] = Tag[i]
+}
+
+{
+  Tag.MemberExpressionComputed = newSymbol("MemberExpressionComputed")
+  const me = symbols.get(Tag.MemberExpression)
+  const mec = Object.assign({},me)
+  symbols.set(Tag.MemberExpressionComputed,mec)
+  mec.fieldsMap = new Map(me.fieldsMap)
+  mec.fieldsMap.set(Tag.property,{atomicType:null,
+                                  nodeTypes:new Set([Tag.Expression])})
+  symbolsComputed.set(Tag.MemberExpression,mec)
 }
 
 function isNode(node) {
@@ -77,9 +249,10 @@ export function* produce(node,pos) {
       yield leave(pos,Tag.Array,value)
     } else if (isNode(node)) {
       const keys = VISITOR_KEYS[node.type]
-      const type = Tag[node.type]
+      const typeInfo = nodeInfo(node)
+      const type = typeInfo.sym
       if (keys.length) {
-        const value = {node}
+        const value = {node,typeInfo}
         yield enter(pos,type,value)
         for(const i of keys) {
           const v = node[i]
@@ -117,7 +290,7 @@ function* reproduce(s) {
         stack.unshift(i.value.node = [])
       } else  {
         if (i.value != null)
-          i.value.type = Symbol.keyFor(i.type)
+          i.value.type = symName(i.type)
         stack.unshift(i.value.node)
       }
     }
@@ -146,8 +319,12 @@ export function consume(s) {
           stack[0][symName(i.pos)] = null
         continue
       } else {
-        if (i.value != null)
-          i.value.node.type = symName(i.type)
+        if (i.value != null) {
+          const ti = /*i.value.typeInfo ||*/ symInfo(i.type)
+          i.value.node.type = ti.esType
+          if (ti.fields)
+            Object.assign(i.value.node,ti.fields)
+        }
         stack.unshift(i.value.node)
       }
     }
@@ -161,3 +338,29 @@ export function consume(s) {
   }
   return stack[0]
 }
+
+export function* resetFieldInfo(s) {
+  const stack = []
+  for(const i of s) {
+    if (i.enter) {
+      const ti = i.value.typeInfo || (i.value.typeInfo = symbols.get(i.type))
+      const f = stack[stack.length-1]
+      if (f && f.fieldsMap)
+        i.value.fieldInfo = f.fieldsMap.get(i.pos)
+      switch(ti.kind) {
+      case "array":
+        stack.push(i.value.fieldInfo)
+        break
+      case "node":
+        stack.push(ti)
+        break
+      default:
+        stack.push(false)
+      }
+    }
+    if (i.leave)
+      stack.pop()
+    yield i
+  }
+}
+

@@ -2,9 +2,11 @@ import * as Kit from "./kit"
 import * as R from "ramda"
 import {Tag,enter,leave,tok,symbol} from "./core"
 import * as assert from "assert"
+import * as Trace from "./trace"
+import dump from "./dump"
 
-export const Root = symbol("MatchRoot","ctrl")
-export const Placeholder = symbol("MatchPlaceholder","ctrl")
+export const Root = symbol("match.root","ctrl")
+export const Placeholder = symbol("match.placeholder","ctrl")
 
 export const commit = R.pipe(
   Array.from,

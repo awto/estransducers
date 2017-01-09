@@ -41,9 +41,7 @@ function markKeyIds(s) {
         case Tag.MemberExpression:
           yield* walk(sl.one())
           const k = sl.cur()
-          if (!i.value.node.computed
-              && k.type === Tag.Identifier)
-          {
+          if (k.type === Tag.Identifier) {
             k.value.key = true
             yield* sl.one()
           }

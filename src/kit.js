@@ -1,6 +1,8 @@
 import * as R from "ramda"
 import * as assert from "assert"
-import {produce,consume,Tag,enter,leave,tok,symbol} from "./core"
+import {produce,consume,Tag,enter,
+        leave,tok,symbol,symInfo
+       } from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
 
@@ -76,9 +78,9 @@ export class ArrayLookahead extends ExtIterator {
       this.opts = c.opts
     return c
   }
-  last() {
-    return this._cont[this._x-1]
-  }
+//  last() {
+//    return this._cont[this._x-1]
+//  }
   cur() {
     return this._cont[this._x]
   }
@@ -99,11 +101,11 @@ export class Lookahead extends ExtIterator {
     this.first = i.value
     this.opts = this.first.opts || _opts
     this._cur = i
-    this._last = null
+//    this._last = null
   }
   next(v) {
     const cur = this._cur
-    this._last = cur.value
+//    this._last = cur.value
     if (!cur.done) {
       if (cur.value.value != null && cur.value.value.opts != null)
         this.opts = cur.value.value.opts
@@ -111,9 +113,9 @@ export class Lookahead extends ExtIterator {
     }
     return cur
   }
-  last() { return this._last; }
+//  last() { return this._last; }
   take(v) {
-    const cur = this._last = this._cur
+    const cur = /*this._last =*/ this._cur
     if (cur.done)
       return null
     if (cur.value.opts != null)
@@ -150,17 +152,24 @@ export const Output = (Super) => class Output extends Super {
       }
     } else
       node = value.node
-    if (type == null && node != null && node.type != null) {
-      type = Tag[node.type]
+    if (type == null) {
+      if (value != null && value.typeInfo != null) {
+        type = value.typeInfo.sym
+      } else if (node != null && node.type != null) {
+        type = Tag[node.type]
+      } else {
+        if (symInfo(pos) === "ctrl")
+          type = pos
+      }
     }
-    if (type == null)
-      type = pos
+    assert.ok(type,"couldn't guess type")
     if (node == null) {
       value.node = node =
         type === Tag.Array ? [] : type === Tag.Null ? null : {}
     }
     if (!value.opts)
       value.opts = this.opts
+//    value.typeInfo = symInfo(type)
     return [pos,type,value]
   }
   *toks(pos,node) {
@@ -357,16 +366,13 @@ export function* toks(pos,s) {
     if (r == null) {
       let mod = null
       switch(s[0]) {
-        // expression
-      case "=":
-        // list
-      case "*":
-        // var declarator
-      case ">":
+      case "=": // expression
+      case "*": // list
+      case ">": // var declarator
         mod = s[0]
         s = s.slice(1)
       }
-      const b = parse(s,{sourceType:"module"})
+      const b = parse(s,{sourceType:"module",plugins:["dynamicImport"]})
       assert.equal(b.type, "File")
       assert.equal(b.program.type, "Program")
       if (!mod === "*")
@@ -502,8 +508,8 @@ export function output(s) {
 
 export function skip(s) {
   const iter = s[Symbol.iterator]()
-  let i = iter.next()
-  for(;!i.done;i=iter.next()) {}
+  let i
+  for(;!(i = iter.next()).done;) {}
   return i.value
 }
 
@@ -556,13 +562,11 @@ export function toArray(s) {
 }
 
 export function result(s,buf) {
-  const i = s[Symbol.iterator]()
-  for(;;) {
-    const v = i.next()
-    if (v.done)
-      return v.value
-    buf.push(v.value)
-  }
+  const iter = s[Symbol.iterator]()
+  let i
+  for(;!(i = iter.next()).done;)
+    buf.push(i.value)
+  return i.value
 }
 
 
@@ -704,33 +708,64 @@ function saveLast(s) {
 }
 
 export const wrap = R.curry(function* wrap(name,f,s) {
-  let last = []
+  const babel = _opts.babel
   const si = auto(s)
   const iter = f(si)[Symbol.iterator]()
-  for(;;) {
-    try {
-      let {done,value:i} = iter.next()
-      if (done)
+  let i
+  try {
+    let j
+    for(;!(j = iter.next()).done;) {
+      i = j.value
+      yield i
+    }
+    return j.value
+  } catch(e) {
+    if (babel != null) {
+      let msg = `${e.message} during ${name}`
+      let node = e.esNode || i && i.value.node // || si._last
+      if (!node || !node.loc && !node._loc) {
+        msg += " (the position is approximated)"
+        for(const i of si) {
+          node = i.value.node
+          if (node && (node.loc || node._loc))
+            throw babel.root.hub.file.buildCodeFrameError(node, msg)
+        }
+        node = babel.root.node
+      }
+      throw babel.root.hub.file.buildCodeFrameError(node, msg)
+    }
+    throw e
+  }
+})
+
+export const checkpointLazy = R.curry(function* checkpointLazy(name,s) {
+  const babel = _opts.babel
+  const iter = s[Symbol.iterator]()
+  let last, i
+  try {
+    for(;;) {
+      const j = iter.next()
+      i = j.value
+      if (j.done)
         return i
       if (i.enter && i.value.node != null && i.value.node.loc != null)
         last = i.value.node
       yield i
-    } catch(e) {
-      const last = si.last(), babel = si.opts.babel
-      if (babel != null) {
-        const node
-              = last && last.value.node
-                && last.value.node.loc && last.value.node
-                || last
-                || babel.root.node
-          throw babel.root.hub.file.buildCodeFrameError(
-            node, `${e.message} during ${name}`)
-        }
-        throw e
-      }
     }
-  })
+  } catch(e) {
+    if (babel != null) {
+      const node = e.esNode || i && i.value.node || last
+            || babel.root.node
+      throw babel.root.hub.file.buildCodeFrameError(
+        node, `${e.message} during ${name}`)
+    }
+    throw e
+  }
+})
 
+export const checkpoint = R.curry(function(name,s) {
+  return [...checkpointLazy(name,s)]
+})
 
 /**
  * babel plugin visitor methods, typically to be applied only to Program node
@@ -767,14 +802,86 @@ export function* tee(s,buf) {
   return buf
 }
 
-
 ExtIterator.prototype.error = function(msg,node) {
   if (this._name != null)
     msg += " during " + this._name
-  const babel = this.opts.babel
-  if (babel != null) {
-    const n = node || this._last && this._last.node || babel.root.node
-    return babel.root.hub.file.buildCodeFrameError(node, msg)
+  const e = new SyntaxError()
+  if (node)
+    e.esOrigNode = node
+  if (!node || !node._loc && !node.loc) {
+    msg += "(the position is approximated)"
+    for(const i of this) {
+      node = i.value.node
+      if(node && (node.loc || node._loc)) {
+        e.esNode = node
+        return e
+      }
+    }
   }
-  return new SyntaxError(msg) 
+  return e
+}
+
+export const makeExpr = symbol("makeExpr")
+export const makeStmt = symbol("makeStmt")
+
+export function makeExprPass(s) {
+  s = auto(s)
+  function* subst(pos) {
+    const t = s.peel()
+    yield s.enter(pos,t.type,t.value)
+    yield* walk()
+    yield* s.leave()
+    skip(s.leave())
+  }
+  function* toExpr(pos) {
+    const j = s.cur()
+    if (j.type === makeExpr || j.type === makeStmt) {
+      yield* walk(pos)
+    } else {
+      const ti = symInfo(j.type)
+      if (ti.block) {
+        yield s.enter(pos,Tag.CallExpression)
+        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,{node:{params:[]}})
+        yield* subst(Tag.body)
+        yield* s.leave()
+        yield s.tok(Tag.arguments,Tag.Array)
+        yield* s.leave()
+      } else if (ti.stmt) {
+        yield s.enter(pos,Tag.CallExpression)
+        const lab = s.label()
+        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,{node:{params:[]}})
+        yield s.enter(Tag.body,Tag.BlockStatement)
+        yield s.enter(Tag.body,Tag.Array)
+        yield* subst(Tag.push)
+        yield* lab()
+        yield s.tok(Tag.arguments,Tag.Array)
+        yield* s.leave()
+      } else if (ti.expr) {
+        yield* subst(pos)
+      } else {
+        throw new Error("internal: cannot convert to expression")
+      }
+    }
+  }
+  function* walk(pos) {
+    for(const i of s.sub()) {
+      switch(i.type) {
+      case makeExpr:
+        if (i.enter) {
+          pos = pos || i.pos
+          yield* toExpr(pos)
+        }
+        break
+      case makeStmt:
+        if (i.enter) {
+          pos = pos || i.pos
+          yield* toExpr(pos)
+        }
+        break
+      default:
+        yield i
+      }
+    }
+  }
+  return walk()
 }

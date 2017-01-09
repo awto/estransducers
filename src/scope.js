@@ -1,6 +1,6 @@
 import * as Kit from "./kit"
 import * as R from "ramda"
-import {Tag,symbol,tok} from "./core"
+import {Tag,TypeInfo as TI,symbol,tok} from "./core"
 
 export const assignSymols = R.pipe(
   function* assignSymbolsDecls(s) {
@@ -84,27 +84,33 @@ export const assignSymols = R.pipe(
     return s
   })
 
-export function* genId(like) {  
-  
+function makeUniqStore() {
+  let cur = 0
+  return (like) => {
+    const name = `uniq_id_${cur++}`, sym = Symbol(name)
+    return {node:{name},typeInfo:TI.identifier,sym,like}
+  }
 }
 
-export function store(s) {
-  
-}
-
-export function id(pos,name) {
-  return tok(pos,Tag.Identifier,{expr:true,node:{name},sym:Symbol.for(name)})
-}
-
-export function uniqPat(pos,name) {
+export function uniq(s) {
+  return s.first._uniqIdsStore || (s.first._uniqIdsStore = makeUniqStore())
 }
 
 /**
  * for declarations with same name but different symbol creates another symbol
  */
 export function uniqNames(s) {
-  const cs = []
   
+  s = Kit.auto(s)
+  function* block(store) {
+    for(const i of s) {
+      switch(i.type) {
+      case Tag.Identifier:
+        if (i.sym) {
+        }
+      }
+    }
+  }
 }
 
 // first get constraints - used in same scope
