@@ -2,87 +2,84 @@ import * as Kit from "./kit"
 import * as R from "ramda"
 import {Tag,TypeInfo as TI,symbol,tok} from "./core"
 
-export const assignSymols = R.pipe(
-  function* assignSymbolsDecls(s) {
-    s = Kit.auto(s)
-    function* scope(root,par) {
-      const dict = root.vars = {}
-      const ctx = root.ctx = Object.create(par)
-      const topLocals = root.locals = {}
-      const params = root.params = {}
+export function assignSymbolsDecls(s) {
+  const sa = Kit.toArray(s)
+  s = Kit.auto(sa)
+  function scope(root,par) {
+    const vars = Object.create(par)
+    const locs = new Map()
+    const refs = new Map()
+    root.ctx = {vars,locs,refs}
+    for(const i of s.sub()) {
+      if (i.enter) {
+        switch(i.pos) {
+        case Tag.body:
+          block(i.value,vars)
+          break
+        case Tag.params:
+          for(const j of s.sub()) {
+            if (j.type === Tag.Identifier) {
+              const {name} = j.value.node
+              const sym = Symbol(name)
+              const info = {sym,name,param:true,root,block:root,value:j.value}
+              locs.set(sym,info)
+              vars[name] = info 
+            }
+          }
+          break
+        }
+      }
+    }
+    return locs
+    function block(b,vars) {
       for(const i of s.sub()) {
-        yield i
         if (i.enter) {
-          switch(i.pos) {
-          case Tag.body:
-            const locals = i.value.locals = {}
-            yield* block(ctx,locals)
-            break
-          case Tag.params:
-            for(const j of s.sub()) {
-              yield j
-              if (j.type === Tag.Identifier) {
-              const n = j.value.node.name
-                const s = Symbol(n)
-                ctx[n] = s
-                params[s] = true
-                dict[s] = j.value
+          switch(i.type) {
+          case Tag.VariableDeclarator:
+            for(const j of s.one()) {
+              if (j.enter && j.type === Tag.Identifier) {
+                const {name} = j.value.node
+                const sym = j.value.sym = Symbol(name)
+                const info = {sym,name,param:false,root,block:b,value:i.value}
+                locs.set(sym,info)
+                vars[name] = info
               }
             }
             break
-          }
-        }
-      }
-      function* block(ctx,locals) {
-        for(const i of s.sub()) {
-          yield i
-          if (i.enter) {
-            switch(i.type) {
-            case Tag.VariableDeclarator:
-              for(const j of s.one()) {
-                if (j.enter && j.type === Tag.Identifier) {
-                  const n = j.value.node.name
-                  const s = Symbol(n)
-                  ctx[n] = s
-                  locals[s] = true
-                  dict[s] = j.value
-                }
+          case Tag.BlockStatement:
+          case Tag.ForStatement:
+          case Tag.ForInStatement:
+          case Tag.ForOfStatement:
+          case Tag.Program:
+            block(i.value,i.value.blockVars = Object.create(vars))
+            break
+          case Tag.FunctionExpression:
+          case Tag.ArrowFunctionExpression:
+          case Tag.FunctionDeclaration:
+          case Tag.ObjectMethod:
+          case Tag.ClassMethod:
+            const sub = scope(i.value,vars)
+            for(const [s,i] of sub)
+              locs.set(s,i)
+            break
+          case Tag.Identifier:
+            const info = vars[i.value.node.name]
+            if (info != null) {
+              i.value.sym = info.sym
+              refs.set(info.sym,info)
+              if (info.root !== root) {
+                (info.capt || (info.capt = new Set())).add(root)
               }
-              break
-            case Tag.BlockStatement:
-              yield* block(i.value.ctx = Object.create(ctx))
-              break
-            case Tag.FunctionExpression:
-            case Tag.ArrowFunctionExpression:
-            case Tag.FunctionDeclaration:
-            case Tag.ObjectMethod:
-            case Tag.ClassMethod:
-              yield* scope(i.value,ctx)
-              break
             }
           }
         }
       }
     }
-    const i = s.peel()
-    yield i
-    yield* scope(i.value,{})
-    yield* s.leave()
-  },
-  Array.from,
-  function assignSymbolsUse(s) {
-    let ctx = {}
-    for(const i of s) {
-      if (i.enter && i.type === Tag.Identifier && i.value.expr) {
-        const s = i.value.sym = ctx[i.value.node.name]
-        i.value.global = s == null
-      }
-      if (i.value.ctx != null) {
-        ctx = i.leave ? i.value.ctx : Object.getPrototypeOf(i.value.ctx)
-      }
-    }
-    return s
-  })
+  }
+  const i = s.take()
+  scope(i.value,{})
+  return sa
+}
 
 function makeUniqStore() {
   let cur = 0
@@ -95,24 +92,3 @@ function makeUniqStore() {
 export function uniq(s) {
   return s.first._uniqIdsStore || (s.first._uniqIdsStore = makeUniqStore())
 }
-
-/**
- * for declarations with same name but different symbol creates another symbol
- */
-export function uniqNames(s) {
-  
-  s = Kit.auto(s)
-  function* block(store) {
-    for(const i of s) {
-      switch(i.type) {
-      case Tag.Identifier:
-        if (i.sym) {
-        }
-      }
-    }
-  }
-}
-
-// first get constraints - used in same scope
-// next resolves them (prefer original names)
-
