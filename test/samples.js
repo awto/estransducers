@@ -7,6 +7,7 @@ import eagerGenerators from "../src/samples/eagerGenerators"
 import joinMemExprs from "../src/samples/joinMemExprs"
 import looseForOf from "../src/samples/looseForOf"
 import instrumentation from "../src/samples/instrumentation"
+import * as Trace from "../src/trace"
 
 const gen = ast => generate(ast,{retainLines:false,concise:true},"").code
 const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)

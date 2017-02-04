@@ -66,7 +66,14 @@ export const inject = R.curry(function* matchInject(pattern, si) {
       const v = activeTok[p]
       const ph = activePh[p]
       if (x !== plen && x !== -1 && activePh[p] == null) {
-        const j = pat[x++]
+        let j = pat[x++]
+        //during generation we may neglect emitting empty arrays 
+        if (j.pos !== i.pos && j.type === Tag.Array
+            && j.enter && !j.leave && pat[x].value === j.value)
+        {
+          x++
+          j = pat[x++]
+        }
         if (x < plen && j.pos != i.pos && j.enter === i.enter) {
           activePos[p] = -1
           v.match = false
@@ -95,12 +102,15 @@ export const inject = R.curry(function* matchInject(pattern, si) {
           case Tag.Identifier:
           case Tag.StringLiteral:
             let block = false
-            if (j.value.node.name[0] === "$") {
+            const name = j.value.node.name || j.value.node.value
+            if (name[0] === "$") {
               const ph = activePh[p]
-                    = {v,level,name:j.value.node.name.substr(1)}
+                    = {v,level,name:name.substr(1)}
               yield enter(i.pos,Placeholder,ph)
-              assert.equal(pat[x].value,j.value)
-              x++
+              if (!j.leave) {
+                assert.equal(pat[x].value,j.value)
+                x++
+              }
               activePos[p] = x
               continue
             }
@@ -115,6 +125,19 @@ export const inject = R.curry(function* matchInject(pattern, si) {
           activePos[p] = -1
           v.match = false
           continue
+        }
+        if (i.enter) {
+          assert.ok(j.enter)
+          if (i.leave && !j.leave) {
+            if (pat[x++].value !== j.value) {
+              activePos[p] = -1
+              v.match = false
+              continue
+            }
+          } else if (j.leave) {
+            if (s.cur().value === i.value)
+              s.read()
+          }
         }
         activePos[p] = x
       }

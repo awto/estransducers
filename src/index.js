@@ -7,4 +7,6 @@ import * as Dump from "./dump";
 export { Dump as dump };
 import * as Match from "./match";
 export { Match as match };
+import * as Scope from "./scope";
+export { Scope as scope };
 
