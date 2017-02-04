@@ -1,7 +1,7 @@
 import * as R from "ramda"
 import * as assert from "assert"
-import {produce,consume,Tag,enter,
-        leave,tok,symbol,symInfo
+import {produce,consume,Tag,enter,resetFieldInfo,
+        leave,tok,symbol,symInfo,typeInfo
        } from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
@@ -64,7 +64,7 @@ export class ArrayLookahead extends ExtIterator {
     assert.ok(cont.length > 0,"input iterator should be not-empty")
     this._x = 0
     this.first = cont[0]
-    this.opts = this.first.opts || _opts
+    this.opts = this.first.value && this.first.value.opts || _opts
   }
   next(v) {
     const c = this._cont[this._x++]
@@ -99,7 +99,7 @@ export class Lookahead extends ExtIterator {
     let i = this._inner.next()
     assert.ok(!i.done,"input iterator should be not-empty")
     this.first = i.value
-    this.opts = this.first.opts || _opts
+    this.opts = this.first.value && this.first.value.opts || _opts
     this._cur = i
 //    this._last = null
   }
@@ -227,27 +227,31 @@ export function Level(Super) {
   function* one(t) {
     const c = t.cur()
     if (c == null || !c.enter)
-      return
+      return null
     const exit = t.level
-    for(const i of t) {
+    let i
+    for(i of t) {
       yield i
       if (exit >= t.level)
-        return
+        return i
     }
+    return i
   }
   function* sub(t) {
     const c = t.cur()
     if (c == null || !c.enter)
-      return
+      return null
     const exit = t.level
-    for(const i of t) {
+    let i
+    for(i of t) {
       yield i
       if (exit >= t.level) {
         const c = t.cur()
         if (c == null || !c.enter || exit > t.level)
-          return
+          return i
       }
     }
+    return i
   }
   return class Level extends Super {
     constructor(cont) {
@@ -337,11 +341,13 @@ export function WithPeel(Super) {
     }
     *one() {
       if (this._stack[0] !== vCloseTag)
-        yield* super.one(); 
+        return (yield* super.one())
+      return null
     }
     *sub() {
       if (this._stack[0] !== vCloseTag)
-        yield* super.sub(); 
+        return (yield* super.sub())
+      return null
     }
     *findPos(pos) {
       if (this._stack[0] !== vCloseTag)
@@ -352,6 +358,10 @@ export function WithPeel(Super) {
       yield this.peel(i);
       yield* this.sub();
       yield* this.leave();
+    }
+    close(i) {
+      const j = this.take()
+      assert.equal(i.value,j.value)
     }
   }
 }
@@ -365,14 +375,15 @@ export function* toks(pos,s) {
     let r = memo.get(s)
     if (r == null) {
       let mod = null
+      let js = s
       switch(s[0]) {
       case "=": // expression
-      case "*": // list
+      case "*": // list of statements
       case ">": // var declarator
         mod = s[0]
-        s = s.slice(1)
+        js = s.slice(1)
       }
-      const b = parse(s,{sourceType:"module",plugins:["dynamicImport"]})
+      const b = parse(js,{sourceType:"module",plugins:["dynamicImport"]})
       assert.equal(b.type, "File")
       assert.equal(b.program.type, "Program")
       if (!mod === "*")
@@ -772,10 +783,11 @@ export const checkpoint = R.curry(function(name,s) {
  */
 export const babelBridge = R.curry(function babelBridge(pass,path,state) {
   const optSave = _opts
-  _opts = {args:Object.assign({},state.opts),
-                file:Object.assign(state.file.opts),
-                babel:{root:path,state}}
-  consume(pass(produce(path.node)))
+  _opts = Object.assign({args:Object.assign({},state.opts),
+                         file:Object.assign(state.file.opts),
+                         babel:{root:path,state}},
+                       _opts)
+  pass(produce(path.node))
   _opts = optSave
 })
 
@@ -834,11 +846,15 @@ export function makeExprPass(s) {
     skip(s.leave())
   }
   function* toExpr(pos) {
-    const j = s.cur()
+    const j = s.curLev()
+    if (j == null)
+      return
     if (j.type === makeExpr || j.type === makeStmt) {
-      yield* walk(pos)
+      yield s.peel(j)
+      yield* toExpr(pos)
+      yield s.leave()
     } else {
-      const ti = symInfo(j.type)
+      const ti = typeInfo(j)
       if (ti.block) {
         yield s.enter(pos,Tag.CallExpression)
         yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,{node:{params:[]}})
@@ -863,6 +879,25 @@ export function makeExprPass(s) {
       }
     }
   }
+  function* toStmt(pos) {
+    const j = s.curLev()
+    if (j == null)
+      return
+    if (j.type === makeExpr || j.type === makeStmt) {
+      yield s.peel(j)
+      yield* toStmt(pos)
+      yield s.leave()
+    } else {
+      const ti = symInfo(j.type)
+      if (ti.stmt || ti.block) {
+        yield* subst(pos)
+      } else {
+        yield s.enter(pos,Tag.ExpressionStatement)
+        yield* subst(Tag.expression)
+        yield* s.leave()
+      }
+    }
+  }
   function* walk(pos) {
     for(const i of s.sub()) {
       switch(i.type) {
@@ -875,7 +910,7 @@ export function makeExprPass(s) {
       case makeStmt:
         if (i.enter) {
           pos = pos || i.pos
-          yield* toExpr(pos)
+          yield* toStmt(pos)
         }
         break
       default:
@@ -885,3 +920,94 @@ export function makeExprPass(s) {
   }
   return walk()
 }
+
+/**
+ * for expr/stmt if field type is different to actual value assigned 
+ * it tries to change the value's type
+ */
+export const adjustFieldType = R.pipe(
+  resetFieldInfo,
+  function adjustFieldType(s) {
+    s = auto(s)
+    function* subst(pos,i) {
+      if (i.leave) {
+        yield s.tok(pos,i.type,i.value)
+      } else {
+        yield s.peel(setPos(i,pos))
+        yield* walk()
+        yield* s.leave()
+      }
+    }
+    function* walk() {
+      for(const i of s.sub()) {
+        if (i.enter) {
+          const fi = i.value.fieldInfo || {}, ti = typeInfo(i)
+          /*
+          if (fi.stmt && ti.stmt) {
+            if (i.type === Tag.ExpressionStatement) {
+              const j = s.value.curLev()
+              if (j != null && j.value.result) {
+                yield s.enter(i.pos,Tag.ReturnStatement)
+                
+              }
+            }
+            yield i
+            continue
+          } */
+          if (fi.stmt && ti.stmt
+              || fi.expr && ti.expr
+              || fi.block && ti.block
+              || i.type === Tag.VariableDeclaration && fi.decl)
+          {
+            yield i
+            continue
+          }
+          if (fi.block && ti.expr) {
+            const lab = s.label()
+            yield s.enter(i.pos,Tag.BlockStatement)
+            yield s.enter(Tag.body,Tag.Array)
+            if (ti.expr) {
+              if (i.value.result) {
+                yield s.enter(Tag.push,Tag.ReturnStatement)
+                yield* subst(Tag.argument,i)
+              } else {
+                yield s.enter(Tag.push,Tag.ExpressionStatement)
+                yield* subst(Tag.expression,i)
+              }
+            } else {
+              assert.ok(ti.stmt)
+              yield* subst(Tag.push,i)
+            }
+            yield* lab()
+            continue
+          }
+          if (fi.stmt && ti.expr) {
+            if (i.value.result) {
+              yield s.enter(i.pos,Tag.ReturnStatement)
+              yield* subst(Tag.argument,i)
+              yield* s.leave()
+            } else {
+              yield s.enter(i.pos,Tag.ExpressionStatement)
+              yield* subst(Tag.expression,i)
+              yield* s.leave()
+            }
+            continue
+          }
+          if (fi.expr && ti.stmt) {
+            yield s.enter(i.pos,Tag.CallExpression)
+            yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,
+                          {node:{params:[],expression:true}})
+            yield* subst(Tag.body,i)
+            yield* s.leave()
+            yield s.tok(Tag.arguments,Tag.Array)
+            yield* s.leave()
+            continue
+          }
+        }
+        yield i
+      }
+    }
+    return walk()
+  }
+)
+

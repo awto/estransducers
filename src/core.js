@@ -13,6 +13,12 @@ export function symInfo(sym) {
 }
 
 export function typeInfo(i) {
+  const node = i.value.node
+  if (node && node.computed) {
+    const res = symbolsComputed.get(i.type)
+    if (res != null)
+      return res
+  }
   return symInfo(i.type)
 }
 
@@ -80,7 +86,8 @@ export const TypeInfo = {}
 export const Tag = {push:symbol("push","pos"),
                     top:symbol("top","pos"),
                     Array:symbol("Array","array"),
-                    Null:symbol("Null","ctrl")}
+                    Node:symbol("Node","node"),
+                    Null:symbol("Null","null")}
 
 for(const i in VISITOR_KEYS) {
   const def = TypeInfo[i] = symbolDefFor(i,"node")
@@ -117,6 +124,7 @@ for(const i in ALIAS_KEYS) {
                                nillable:false,
                                enumValues:null,
                                default: null}]])
+  
 }
 
 for(const i in VISITOR_KEYS) {
@@ -214,17 +222,26 @@ for(const i in Tag) {
   Tag[Tag[i]] = Tag[i]
 }
 
-{
-  Tag.MemberExpressionComputed = newSymbol("MemberExpressionComputed")
-  const me = symbols.get(Tag.MemberExpression)
-  const mec = Object.assign({},me)
-  symbols.set(Tag.MemberExpressionComputed,mec)
+function setComputed(nm,prop,tys) {
+  const cnm = `${nm}Computed`
+  const sym = Tag[nm]
+  const csym = Tag[cnm] = newSymbol(cnm)
+  const me = symbols.get(sym)
+  const mec = Object.assign({},me,{sym:csym})
+  symbols.set(csym,mec)
   mec.fieldsMap = new Map(me.fieldsMap)
-  mec.fieldsMap.set(Tag.property,{atomicType:null,
-                                  nodeTypes:new Set([Tag.Expression])})
-  symbolsComputed.set(Tag.MemberExpression,mec)
+  mec.fieldsMap.set(prop,{atomicType:null,
+                          nodeTypes:new Set([Tag.Expression])})
+  me.fieldsMap.set(prop,{atomicType:null,
+                          nodeTypes:new Set(tys)})
+  symbolsComputed.set(sym,mec)
 }
 
+setComputed("MemberExpression",Tag.property,[Tag.Identifier])
+setComputed("ObjectProperty",Tag.key,
+            [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
+setComputed("ObjectMethod",Tag.key,
+            [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
 function isNode(node) {
   if (node == null)
     return false;
@@ -312,7 +329,8 @@ function* reproduce(s) {
 export function consume(s) {
   const stack = [{}]
   for (const i of s) {
-    if (i.type == null || !Tag[i.type])
+    const ti = typeInfo(i)
+    if (i.type == null || ti.kind === "ctrl")
       continue
     if (i.enter) {
       if (i.type === Tag.Array)
@@ -324,8 +342,8 @@ export function consume(s) {
         continue
       } else {
         if (i.value != null) {
-          const ti = typeInfo(i)
-          i.value.node.type = ti.esType
+          if (ti.esType != null)
+            i.value.node.type = ti.esType
           if (ti.fields)
             Object.assign(i.value.node,ti.fields)
         }
@@ -341,6 +359,20 @@ export function consume(s) {
     }
   }
   return stack[0]
+}
+
+/** 
+ * unwraps tokens formerly folded into Node sub-token
+ */
+export function* reproduceNodes(s) {
+  for(const i of s) {
+    if (i.type === Tag.Node) {
+      if (i.enter) {
+        yield* produce(i.value.node,i.pos)
+      } else
+        yield i
+    }
+  }
 }
 
 export function* resetFieldInfo(s) {
@@ -372,8 +404,9 @@ export function* removeNulls(s) {
   const stack = []
   for(const i of s) {
     if (i.type === Tag.Null) {
-      if (i.enter && i.pos != Tag.push && stack[0]) {
-        stack[0][symName(i.pos)] = null
+      if (i.enter && stack[0]) {
+        if (i.pos != Tag.push)
+          stack[0][symName(i.pos)] = null
       }
       continue
     }

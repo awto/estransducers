@@ -30,65 +30,42 @@ export function* markNodeType(s) {
 export const convertCtrl = R.pipe(
   resetFieldInfo,
   markNodeType,
+  Array.from,
   function convertCtrl(s) {
     s = Kit.auto(s)
-    let varDeclNum = 0
     function* walk(sw) {
-      let last = null
       for(const i of sw) {
         if (i.enter) {
           const fld = i.value.fieldInfo || {}, ti = typeInfo(i)
-          if (i.type !== Tag.Array && ti.kind === "ctrl") {
+          if (ti.kind === "ctrl") {
             s.peel(i)
             const lab = s.label()
-            let pos = i.pos
             const nm = ti.name
-            if (fld.block || fld.stmt || fld.expr) {
-              yield s.enter(i.pos,
-                            fld.expr ? Tag.SequenceExpression : Tag.BlockStatement,
-                            {comments:i.value.comments})
-              yield s.enter(fld.expr ? Tag.expressions : Tag.body,Tag.Array)
-              for(;;) {
-                const j = s.curLev()
-                if (j == null)
-                  break
-                yield s.enter(Tag.push,fld.expr ? Kit.makeExpr : Kit.makeStmt)
+            const stmt = !fld.expr
+            yield s.enter(i.pos,
+                          stmt ? Tag.BlockStatement : Tag.SequenceExpression,
+                          {comments:i.value.comments})
+            yield s.enter(stmt ? Tag.body : Tag.expressions, Tag.Array)
+            if (!i.leave) {
+              for(let j;(j = s.curLev()) != null;) {
+                yield s.enter(Tag.push,Kit.Subst)
                 yield* walk(s.one())
-              }
-              yield* lab()
-            } else {
-              let j = s.curLev()
-              if (j != null) {
-                setComment(j,"<","nodetype")
-                copyComment(i,j)
-                let num = 0
-                last = j
-                if (!i.leave) {
-                  for(;j!=null;j=s.curLev()) {
-                    num++
-                    yield* walk(s.one())
-                    last = j
-                  }
-                  if (num !== 1) {
-                    setEndComment(last,"/"+nm,"nodetype")
-                  }
-                }
-              } else {
-                if (last != null)
-                  setEndComment(last,">"+nm,"nodetype")
+                yield* s.leave()
               }
             }
+            yield* lab()
             Kit.skip(s.leave())
             continue
           }
         }
         yield i
-        last = i
       }
     }
     return walk(s)
   },
-  Kit.makeExprPass
+  Kit.completeSubst,
+  Array.from,
+  Kit.adjustFieldType
 )
 
 export const color = BROWSER_DEBUG
@@ -164,7 +141,7 @@ export const toConsole = R.curry(function toConsole(tag,s) {
                      Array.from
                     )(s)
   const args = Array.from(getArgs(col))
-  consume(col)
+  consume(Trace.verify(col))
   console.log(generate(col[0].value.node).code,...args)
   if (BROWSER_DEBUG)
     console.groupEnd()
@@ -241,6 +218,12 @@ export function* cleanComments(s) {
     if (i.leave) {
       i.value.comments = null
       i.value.tcomments = null
+      if (i.value.node) {
+        if (i.value.leadingComments)
+          i.value.leadingComments = null
+        if (i.value.trailingComments)
+          i.value.trailingComments = null
+      }
     }
   }
 }

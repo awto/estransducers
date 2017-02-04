@@ -60,12 +60,13 @@ export function* verify(s) {
     assert.ok(i.type != null)
     assert.ok(i.value != null)
     const ti = typeInfo(i)
+    const ctrlPos = symInfo(i.pos).kind === "ctrl"
     if (i.enter && stack.length) {
       const [f,keys] = stack[stack.length-1]
       if (f.type === Tag.Array) {
-        if (ti.kind !== "ctrl")
+        if (!ctrlPos)
           assert.equal(i.pos, Tag.push)
-      } else if (keys != null && ti.kind !== "ctrl") {
+      } else if (keys != null && !ctrlPos) {
         let k
         while((k = keys.shift()) != null) {
           if (Tag[k] === i.pos)
@@ -78,9 +79,9 @@ export function* verify(s) {
       if (i.type === Tag.Array) {
         assert.ok(i.value.fieldInfo.array,"expected array field")
       } else if (ti.kind === "node") {
-        const fts = i.value.fieldInfo.nodeTypes, als = ti.aliases
-        assert.ok(fts.has(i.type) || [...fts].find(als.has,als) !== undefined,
-                  "field type mismatch")
+//        const fts = i.value.fieldInfo.nodeTypes, als = ti.aliases
+//        assert.ok(fts.has(i.type) || [...fts].find(als.has,als) !== undefined,
+//                  "field type mismatch")
       }
     }
     if (i.enter && !i.leave) {
@@ -90,7 +91,8 @@ export function* verify(s) {
     if (!i.enter && i.leave) {
       const [f] = stack.pop()
       assert.ok(f != null)
-      assert.equal(f.type,i.type)
+      if (ti.kind !== "ctrl")
+        assert.equal(f.type,i.type)
       assert.equal(f.pos,i.pos)
       assert.equal(f.value,i.value)
     }
@@ -270,4 +272,5 @@ function traceArgs(impl) {
 
 export const lazy = traceArgs(traceImpl)
 export const all = traceArgs(traceAllImpl)
+export default lazy
 
