@@ -193,6 +193,8 @@ for(const i in VISITOR_KEYS) {
       }
     }
     if (enumValues != null) {
+      nillable = nillable || enumValues.indexOf(null) !== -1
+      enumValues = enumValues.filter(i => i != null)
       assert.equal(enumValues.filter(v => v.substr == null).length,0)
     }
     return {
