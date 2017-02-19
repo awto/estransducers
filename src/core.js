@@ -4,7 +4,6 @@ import * as assert from "assert"
 const GLOBAL_SYMBOLS = true
 
 let nameCount = 0
-
 const symbols = new Map()
 const symbolsComputed = new Map()
 
@@ -127,9 +126,25 @@ for(const i in ALIAS_KEYS) {
   
 }
 
+
+/** Tag.Identifier not declaring any reference */
+const notDeclsPosSet = new Set([
+  Tag.label,
+  Tag.key,
+  Tag.imported,
+  Tag.exported,
+  Tag.label,
+  Tag.key,
+  Tag.meta,
+  Tag.property
+])
+
+const declsPosSet = new Set([Tag.id])
+
 for(const i in VISITOR_KEYS) {
   const nodeFields = NODE_FIELDS[i]
-  const def = symbols.get(Tag[i])
+  const pos = Tag[i]
+  const def = symbols.get(pos)
   if (nodeFields != null) {
     const fieldsMap = def.fieldsMap || (def.fieldsMap = new Map())
     for(const j in nodeFields) {
@@ -137,12 +152,12 @@ for(const i in VISITOR_KEYS) {
       const fdef = symbolDefFor(j,"pos")
       if (fieldsMap.has(fdef.sym))
         continue
-      const info = getTy(jdef.validate)
+      const info = getTy(jdef.validate,fdef.sym)
       info.default = jdef.default
       fieldsMap.set(fdef.sym,info)
     }
   }
-  function getTy(ty) {
+  function getTy(ty,pos) {
     let enumValues = null,
     nt = new Set(),
     atomicType = null,
@@ -197,14 +212,17 @@ for(const i in VISITOR_KEYS) {
       enumValues = enumValues.filter(i => i != null)
       assert.equal(enumValues.filter(v => v.substr == null).length,0)
     }
+    const expr = nt.has(Tag.Expression)
     return {
-      atomicType,nodeTypes:nt,nillable,enumValues,
-      expr: nt.has(Tag.Expression),
+      atomicType,nodeTypes:nt,nillable,enumValues,expr,
       stmt: (nt.has(Tag.Statement) || nt.has(Tag.BlockStatement)),
       block: nt.has(Tag.BlockStatement) && !nt.has(Tag.Statement),
       key: nt.has(Tag.Identifier) && !nt.has(Tag.Expression),
       lval: nt.has(Tag.LVal),
-      decl: (nt.has(Tag.VariableDeclaration) || nt.has(Tag.Declaration))
+      decl: (nt.has(Tag.VariableDeclaration) || nt.has(Tag.Declaration)),
+      declVar: !expr && (
+        nt.has(Tag.Identifier) && !notDeclsPosSet.has(pos)
+          || declsPosSet.has(pos))
     }
   }
 }

@@ -817,11 +817,11 @@ export function* tee(s,buf) {
 ExtIterator.prototype.error = function(msg,node) {
   if (this._name != null)
     msg += " during " + this._name
-  const e = new SyntaxError()
+  const e = new SyntaxError(msg)
   if (node)
     e.esOrigNode = node
   if (!node || !node._loc && !node.loc) {
-    msg += "(the position is approximated)"
+    e.messsage += "(the position is approximated)"
     for(const i of this) {
       node = i.value.node
       if(node && (node.loc || node._loc)) {
