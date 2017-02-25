@@ -26,7 +26,7 @@ export const assignSym = R.pipe(
                       scope.set(k.value.node.name,k.value)
                   }
                   if (s.curLev() != null)
-                    varScope()
+                    varScope(scope)
                 }
               }
               Kit.skip(s.leave())
@@ -129,8 +129,8 @@ export function calcDecls(si) {
   const sa = Kit.toArray(si)
   const s = Kit.auto(sa)
   function scope(value,rootDecls) {
-    function block(value,decls) {
-      const refs = value.varRefs = new Set()
+    function block(value,decls,refs) {
+      let locref = false
       function walk(kind) {
         for(const i of s.sub()) {
           if (i.enter) {
@@ -146,34 +146,45 @@ export function calcDecls(si) {
                 rootDecls.add(j.value.sym)
                 Kit.skip(s.one())
               }
+              scope(i.value,new Set()).forEach(refs.add,refs)
+              break
             case Tag.ArrowFunctionExpression:
             case Tag.FunctionExpression:
-              scope(i.value,new Set()).forEach(refs.add,refs)
+              const nroot = new Set()
+              const k = s.curLev()
+              if (k && k.pos === Tag.id) {
+                nroot.add(k.value.sym)
+                Kit.skip(s.one())
+              }
+              scope(i.value,nroot).forEach(refs.add,refs)
               break
             case Tag.ForStatement:
             case Tag.ForInStatement:
             case Tag.ForOfStatement:
             case Tag.Program:
             case Tag.BlockStatement:
-              block(i.value,new Set()).forEach(refs.add,refs)
+              const nrefs = new Set()
+              block(i.value,new Set(),nrefs).forEach(refs.add,refs)
               break
             case Tag.Identifier:
               if (i.value.decl != null && i.value.sym !== outOfScopeSym) {
                 if (i.value.decl)
                   (kind === "var" ? rootDecls : decls).add(i.value.sym)
-                refs.add(i.value.sym)
               }
+              refs.add(i.value.sym)
               break
             }
           }
         }
       }
       walk()
+      if (!locref)
+        value.varRefs = refs
       return [...refs].filter(j => !decls.has(j))
     }
-    return block(value,rootDecls)
+    return block(value,rootDecls,rootDecls)
   }
-  scope(s.first.value,new Set())
+  scope(s.first.value,s.first.varRefs = new Set())
   return sa
 }
 
@@ -190,43 +201,64 @@ export function* solve(si) {
   const {syms} = root
   const constrs = new Map() //: Map<String,{syms:Symbol[],names:Set<String>}[]>
   let renames = new Map() //: Map<Symbol,String>
-  const anyPat = new Map() //: Map<Symbol,[[SymbolInfo]]>
-  for(const i of syms.values()) {
-    let fi = constrs.get(i.name)
-    if (i.name == null) {
-      anyPat.set(i.sym,[])
-    } else {
-      if (fi == null)
-        constrs.set(i.name,fi = [])
-      if (i.rename) {
-        renames.set(i.sym,i.name)
+  const anyPat //: Map<Symbol,[[SymbolInfo]]>
+        = new Map([...syms.values()]
+                  .filter(i => i.name == null)
+                  .map(i => [i.sym,[]]))
+  const refsFrames = [] //: [[SymbolInfo]]
+  for(const i of sa) {
+    if (i.enter && i.value.varRefs != null) {
+      const refs = [...i.value.varRefs].map(syms.get,syms) //: [SymbolInfo]
+      refsFrames.push(refs)
+      for(const i of refs) {
+        if (i.name == null) {
+          anyPat.get(i.sym).push(...refs)
+        }
       }
     }
   }
-  for(const i of sa) {
-    if (i.enter && i.value.varRefs != null) {
-      const refs = [...i.value.varRefs].map(syms.get,syms)
-      const names = new Map() //: Map<String,[SymbolInfo]>
-      for(const i of refs) {
-        if (i.name == null) {
-          anyPat.get(i.sym).push(refs)
-        } else {
-          let sil = names.get(i.name)
-          if (sil == null)
-            names.set(i.name,sil = [])
-          sil.push(i)
-        }
+  for(const [s,is] of anyPat) {
+    const ism = new Map()
+    for(const i of is.map(i => i.name).filter(i => i != null))
+      ism.set(i,(ism.get(i) || 0)+1)
+    let mn, mv
+    for(const i of nameOpts) {
+      const c = ism.get(i)
+      if (!c) {
+        mv = i
+        break
       }
-      const namesSet = new Set()
-      for(const [n,i] of names) {
-        constrs.get(n).push({
-          names:namesSet,
-          syms:i.sort((a,b) => a.num - b.num).map(a => a.sym)
-        })
-        namesSet.add(n)
+      if (mn == null || mn < c) {
+        mn = c
+        mv = i 
       }
     }
-    // 
+    syms.get(s).name = mv
+  }
+  for(const i of syms.values()) {
+    let fi = constrs.get(i.name)
+    if (fi == null)
+      constrs.set(i.name,fi = [])
+    if (i.rename) {
+      renames.set(i.sym,i.name)
+    }
+  }
+  for(const refs of refsFrames) {
+    const names = new Map() //: Map<String,[SymbolInfo]>
+    for(const i of refs) {
+      let sil = names.get(i.name)
+      if (sil == null)
+        names.set(i.name,sil = [])
+      sil.push(i)
+    }
+    const namesSet = new Set()
+    for(const [n,i] of names) {
+      constrs.get(n).push({
+        names:namesSet,
+        syms:i.sort((a,b) => a.num - b.num).map(a => a.sym)
+      })
+      namesSet.add(n)
+    }
   }
   const names = new Set(constrs.keys())
   for(const [i,n] of constrs) {
@@ -265,14 +297,6 @@ export function* solve(si) {
     yield i
   }
 }
-
-/*
- - a1
- - a1 a3 a2
- - a1 a2
- - a1
- - a1 a2 a3
-*/
 
 export function assignSymbolsDecls(s) {
   const sa = Kit.toArray(s)

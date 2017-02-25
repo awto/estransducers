@@ -63,7 +63,7 @@ const convertImpl = (pass) => R.pipe(
   gen)
 
 describe("generating new names", function() {
-  const convert = (genLikes,s) => {
+  const convert = (s,genLikesNum,genLikesSimpl = []) => {
     let genId = 0
     return convertImpl(R.pipe(
       function*(si) {
@@ -71,10 +71,12 @@ describe("generating new names", function() {
         for(const i of s) {
           if (i.pos === Tag.declarations && i.leave) {
             let prev = null
-            for(const i of genLikes) {
+            const names = genLikesSimpl.map(i => [i,i])
+                  .concat(genLikesNum.map(i => [i,`${i}${genId++}`]))
+            let debx = 0
+            for(const [i,name,sym] of names) {
               yield s.enter(Tag.push,Tag.VariableDeclarator)
-              const name = `${i}${genId++}`
-              yield s.tok(Tag.id,Tag.Identifier,{nameLike:i,node:{name}})
+              yield s.tok(Tag.id,Tag.Identifier,{nameLike:i,sym,node:{name},debx:debx++})
               if (prev != null)
                 yield s.tok(Tag.init,Tag.Identifier,{node:{name:prev}})
               yield* s.leave()
@@ -87,11 +89,46 @@ describe("generating new names", function() {
     ))(s)
   }
   it("should generate uniq names 1", function() {
-    expect(convert(["a","b","c","d","a"],function a() {
-      var a = 10, b = 10;
-    })).to.equal(pretty(function a() {
+    expect(
+      convert(function a() {
+        var a = 10, b = 10;
+      },["a","b","c","d","a"]))
+      .to.equal(pretty(function a() {
       var a = 10, b = 10, a1, b1 = a1, c = b1, d = c, a2 = d;
     }))
+  })
+  it("should generate uniq names 2", function() {
+    expect(
+      convert(function a() {
+        var a = 10, b = 10;
+      },["a","b","c","d","a"],["a"]))
+      .to.equal(pretty(function a() {
+      var a = 10, b = 10, a1, a2 = a1, b1 = a2, c = b1, d = c, a3 = d;
+    }))
+  })
+  it("should generate uniq names 3", function() {
+    expect(
+      convert(function a() {
+        var a = 10, b = 10;
+      },["a","b","$$$"],["a","$$$"]))
+      .to.equal(pretty(function a() {
+        var a = 10, b = 10, a1, c = a1, a2 = c, b1 = a2, d = b1;
+      }))
+  })
+  it("should generate uniq names 4", function() {
+    expect(
+      convert(function a() {
+        var a = 10, b = 10;
+        function c() {
+          var d = 10, e = 10;
+        }
+      },["a","b","$$$"],["a","$$$"]))
+      .to.equal(pretty(function a() {
+        var a = 10, b = 10, a1, d = a1, a2 = d, b1 = a2, e = b1;
+        function c() {
+          var d = 10, e = 10, a, c = a, a1 = c, b = a1, f = b;
+        }
+      }))
   })
 })
 
