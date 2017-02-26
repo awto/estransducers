@@ -6,6 +6,7 @@
   "scripts": {
     "test": "mocha",
     "build": "babel src --out-dir=.",
+    "watch": "babel -w src --out-dir=.",
     "prepublish": "npm run build"
   },
   "repository": "git+https://github.com/awto/estree-transducers.git",
