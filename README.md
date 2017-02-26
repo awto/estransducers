@@ -191,7 +191,7 @@ There are more details in
 
 ## LICENSE
 
-Copyright © 2016 Vitaliy Akimov
+Copyright © 2016,2017 Vitaliy Akimov
 
 Distributed under the terms of The MIT License (MIT).
 
