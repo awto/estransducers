@@ -22,8 +22,10 @@ export const assignSym = R.pipe(
                 if (j.enter) {
                   assert.equal(s.cur().pos, Tag.id)
                   for(const k of s.one()) {
-                    if (k.enter && k.type === Tag.Identifier)
+                    if (k.enter && k.type === Tag.Identifier
+                        && i.value.sym == null) {
                       scope.set(k.value.node.name,k.value)
+                    }
                   }
                   if (s.curLev() != null)
                     varScope(scope)
@@ -228,7 +230,7 @@ export function* solve(si) {
         mv = i
         break
       }
-      if (mn == null || mn < c) {
+      if (mn == null || mn > c) {
         mn = c
         mv = i 
       }

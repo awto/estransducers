@@ -68,19 +68,20 @@ describe("generating new names", function() {
     return convertImpl(R.pipe(
       function*(si) {
         const s = Kit.auto(si)
+        let debx = 0
         for(const i of s) {
           if (i.pos === Tag.declarations && i.leave) {
-            let prev = null
-            const names = genLikesSimpl.map(i => [i,i])
-                  .concat(genLikesNum.map(i => [i,`${i}${genId++}`]))
-            let debx = 0
+            let prev = null, prevSym = null
+            const names = []
+                  .concat(genLikesNum.map(i => [i,`${i}${genId++}`]),
+                          genLikesSimpl.map(i => [i,i,Symbol(i)]))
             for(const [i,name,sym] of names) {
               yield s.enter(Tag.push,Tag.VariableDeclarator)
               yield s.tok(Tag.id,Tag.Identifier,{nameLike:i,sym,node:{name},debx:debx++})
               if (prev != null)
-                yield s.tok(Tag.init,Tag.Identifier,{node:{name:prev}})
+                yield s.tok(Tag.init,Tag.Identifier,{node:{name:prev},sym:prevSym})
               yield* s.leave()
-              prev = name
+              prev = name, prevSym = sym
             }
           }
           yield i
@@ -103,8 +104,8 @@ describe("generating new names", function() {
         var a = 10, b = 10;
       },["a","b","c","d","a"],["a"]))
       .to.equal(pretty(function a() {
-      var a = 10, b = 10, a1, a2 = a1, b1 = a2, c = b1, d = c, a3 = d;
-    }))
+        var a = 10, b = 10, a1, b1 = a1, c = b1, d = c, a2 = d, a3 = a2;
+      }))
   })
   it("should generate uniq names 3", function() {
     expect(
@@ -112,7 +113,7 @@ describe("generating new names", function() {
         var a = 10, b = 10;
       },["a","b","$$$"],["a","$$$"]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, a1, c = a1, a2 = c, b1 = a2, d = b1;
+        var a = 10, b = 10, a1, b1 = a1, c = b1, a2 = c, d = a2;
       }))
   })
   it("should generate uniq names 4", function() {
@@ -124,11 +125,48 @@ describe("generating new names", function() {
         }
       },["a","b","$$$"],["a","$$$"]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, a1, d = a1, a2 = d, b1 = a2, e = b1;
+        var a = 10, b = 10, a1, b1 = a1, d = b1, a2 = d, e = a2;
         function c() {
-          var d = 10, e = 10, a, c = a, a1 = c, b = a1, f = b;
+          var d = 10, e = 10, a, b = a, c = b, a1 = c, f = a1;
         }
       }))
+  })
+  it("should generate uniq names 5", function() {
+    expect(
+      convert(function a() {
+        var a = 10, b = 10,c,d,e,f,g,h,k,m,n,x,y,z;
+      },["a","b","$$$"],["a","$$$"]))
+      .to.equal(pretty(function a() {
+        var a = 10, b = 10, c, d, e, f, g, h, k, m, n, x, y,
+            z, a1, b1 = a1, c1 = b1, a2 = c1, d1 = a2;
+      }))
+  })
+  it("should generate uniq names 6", function() {
+    expect(
+      convert(`function f() {
+        let a = 10, b = 10;
+        {
+          let c = a;
+        }
+        {
+          let c = b, d = 20;
+        }
+        {
+          let a = 10, c = 20, e = 30;
+        }
+      }`,["a","b","$$$"],["a","$$$"]))
+      .to.equal(pretty(`function f() {
+        let a = 10, b = 10, a1, b1 = a1, c = b1, a2 = c, d = a2;
+        {
+          let c = a, a1, b = a1, d = b, a2 = d, e = a2;
+        }
+        {
+          let c = b, d = 20, a, b1 = a, e = b1, a1 = e, f = a1;
+        }
+        {
+          let a = 10, c = 20, e = 30, a1, b = a1, d = b, a2 = d, f = a2;
+        }
+      }`))
   })
 })
 
