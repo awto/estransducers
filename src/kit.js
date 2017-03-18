@@ -922,92 +922,150 @@ export function makeExprPass(s) {
 }
 
 /**
+ * detects if there it is a block statement with only a single result, and removes it
+ */
+export function removeEmptyBlocks(si) {
+  const s = auto(si)
+  function* walk(sw) {
+    for(const i of sw) {
+      if (i.enter && i.type === Tag.BlockStatement) {
+        const lab = s.label()
+        const buf = [s.peel(i),...s.peelTo(Tag.body)]
+        if (s.curLev() == null) {
+          yield* buf
+          yield* lab()
+          continue
+        }
+        const fi = i.value.fieldInfo
+        if (fi.expr || fi.stmt) {
+          const one = [...walk(s.one())]
+          if (s.curLev() != null
+              || fi.expr && fi.block && typeInfo(one[0]).stmt) {
+            yield* buf
+            yield* one
+            yield* walk(s.sub())
+            yield* lab()
+            continue
+          }
+          one[0].pos = one[one.length-1].pos = i.pos
+          one[0].value.fieldInfo = fi
+          yield* one
+          skip(lab())
+        }
+        continue
+      }
+      yield i
+    }
+  }
+  return walk(s)
+}
+
+function adjustFieldTypeImpl(s) {
+  s = auto(s)
+  function* subst(pos,i) {
+    if (i.leave) {
+      yield s.tok(pos,i.type,i.value)
+    } else {
+      yield s.peel(setPos(i,pos))
+      yield* walk()
+      yield* s.leave()
+    }
+  }
+  function* walk() {
+    for(const i of s.sub()) {
+      if (i.enter) {
+        const fi = i.value.fieldInfo || {}, ti = typeInfo(i)
+        if (i.type === Tag.Array && fi.array
+            || fi.stmt && ti.stmt
+            || fi.expr && ti.expr
+            || fi.block && ti.block
+            || i.type === Tag.VariableDeclaration && fi.decl)
+        {
+          yield i
+          continue
+        }
+        if (i.type === Tag.Array) {
+          if (fi.block || fi.stmt) {
+            yield s.enter(i.pos,Tag.BlockStatement)
+            yield* subst(Tag.body,i)
+            yield* s.leave()
+          } else if (fi.expr) {
+            yield s.enter(i.pos,Tag.SequenceExpression)
+            yield* subst(Tag.expressions,i)
+            yield* s.leave()
+          } else
+            yield i
+          continue
+        }
+        if (fi.block) {
+          const lab = s.label()
+          yield s.enter(i.pos,Tag.BlockStatement)
+          yield s.enter(Tag.body,Tag.Array)
+          if (ti.expr) {
+            if (i.value.result) {
+              yield s.enter(Tag.push,Tag.ReturnStatement)
+              yield* subst(Tag.argument,i)
+            } else {
+              yield s.enter(Tag.push,Tag.ExpressionStatement)
+              yield* subst(Tag.expression,i)
+            }
+          } else {
+            assert.ok(ti.stmt)
+            yield* subst(Tag.push,i)
+          }
+          yield* lab()
+          continue
+        }
+        if (fi.stmt && ti.expr) {
+          if (i.value.result) {
+            yield s.enter(i.pos,Tag.ReturnStatement)
+            yield* subst(Tag.argument,i)
+            yield* s.leave()
+          } else {
+            yield s.enter(i.pos,Tag.ExpressionStatement)
+            yield* subst(Tag.expression,i)
+            yield* s.leave()
+            }
+          continue
+        }
+        if (fi.expr) {
+          yield s.enter(i.pos,Tag.CallExpression)
+          yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,
+                        {node:{params:[],expression:true}})
+          if (!ti.block) {
+            yield s.enter(Tag.body,Tag.BlockStatement)
+            yield s.enter(Tag.body,Tag.Array)
+            yield* subst(Tag.push,i)
+            yield* s.leave()
+            yield* s.leave()
+          } else {
+            yield* subst(Tag.body,i)
+          }
+          yield* s.leave()
+          yield s.tok(Tag.arguments,Tag.Array)
+          yield* s.leave()
+          continue
+        }
+      }
+      yield i
+    }
+  }
+  return walk()
+}
+
+/**
  * for expr/stmt if field type is different to actual value assigned 
  * it tries to change the value's type
  */
 export const adjustFieldType = R.pipe(
   resetFieldInfo,
-  function adjustFieldType(s) {
-    s = auto(s)
-    function* subst(pos,i) {
-      if (i.leave) {
-        yield s.tok(pos,i.type,i.value)
-      } else {
-        yield s.peel(setPos(i,pos))
-        yield* walk()
-        yield* s.leave()
-      }
-    }
-    function* walk() {
-      for(const i of s.sub()) {
-        if (i.enter) {
-          const fi = i.value.fieldInfo || {}, ti = typeInfo(i)
-          /*
-          if (fi.stmt && ti.stmt) {
-            if (i.type === Tag.ExpressionStatement) {
-              const j = s.value.curLev()
-              if (j != null && j.value.result) {
-                yield s.enter(i.pos,Tag.ReturnStatement)
-                
-              }
-            }
-            yield i
-            continue
-          } */
-          if (fi.stmt && ti.stmt
-              || fi.expr && ti.expr
-              || fi.block && ti.block
-              || i.type === Tag.VariableDeclaration && fi.decl)
-          {
-            yield i
-            continue
-          }
-          if (fi.block && ti.expr) {
-            const lab = s.label()
-            yield s.enter(i.pos,Tag.BlockStatement)
-            yield s.enter(Tag.body,Tag.Array)
-            if (ti.expr) {
-              if (i.value.result) {
-                yield s.enter(Tag.push,Tag.ReturnStatement)
-                yield* subst(Tag.argument,i)
-              } else {
-                yield s.enter(Tag.push,Tag.ExpressionStatement)
-                yield* subst(Tag.expression,i)
-              }
-            } else {
-              assert.ok(ti.stmt)
-              yield* subst(Tag.push,i)
-            }
-            yield* lab()
-            continue
-          }
-          if (fi.stmt && ti.expr) {
-            if (i.value.result) {
-              yield s.enter(i.pos,Tag.ReturnStatement)
-              yield* subst(Tag.argument,i)
-              yield* s.leave()
-            } else {
-              yield s.enter(i.pos,Tag.ExpressionStatement)
-              yield* subst(Tag.expression,i)
-              yield* s.leave()
-            }
-            continue
-          }
-          if (fi.expr && ti.stmt) {
-            yield s.enter(i.pos,Tag.CallExpression)
-            yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,
-                          {node:{params:[],expression:true}})
-            yield* subst(Tag.body,i)
-            yield* s.leave()
-            yield s.tok(Tag.arguments,Tag.Array)
-            yield* s.leave()
-            continue
-          }
-        }
-        yield i
-      }
-    }
-    return walk()
-  }
+  adjustFieldTypeImpl
+)
+
+/** like `adjustFieldType` but with some simplifications */
+export const adjustFieldTypeSimple = R.pipe(
+  resetFieldInfo,
+  removeEmptyBlocks,
+  adjustFieldTypeImpl
 )
 

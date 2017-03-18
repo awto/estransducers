@@ -5,44 +5,33 @@ const GLOBAL_SYMBOLS = true
 
 let nameCount = 0
 const symbols = new Map()
-const symbolsComputed = new Map()
+//TODO: fields used only with a single type
+const fieldTypes = new Map()
 
 export function symInfo(sym) {
   return symbols.get(sym)
 }
 
 export function typeInfo(i) {
-  const node = i.value.node
-  if (node && node.computed) {
-    const res = symbolsComputed.get(i.type)
-    if (res != null)
-      return res
-  }
   return symInfo(i.type)
 }
 
 export const symName = GLOBAL_SYMBOLS
   ? Symbol.keyFor
-  : (s) => symbols.get(s).name
+  : (s) => symInfo(s).name
 
 export const newSymbol = GLOBAL_SYMBOLS ? Symbol.for : Symbol
 
 export function nodeInfo(node) {
-  const sym = Tag[node.type]
-  if (node.computed) {
-    const res = symbolsComputed.get(sym)
-    if (res != null)
-      return res
-  }
-  return symbols.get(sym)
+  return symInfo(Tag[node.type])
 }
 
 export function symKind(sym) {
-  return symbols.get(sym).kind
+  return symInfo(sym).kind
 }
 
 export function fieldInfo(type,field) {
-  const e = symbols.get(type)
+  const e = symInfo(type)
   if (e == null || e.fieldsMap == null)
     return null
   return e.fieldsMap.get(field)
@@ -56,7 +45,8 @@ export function symbol(name,kind = "ctrl") {
     sym:res,
     name,
     kind,
-    x:nameCount++
+    x:nameCount++,
+    prop: null
   })
   return res
 }
@@ -67,13 +57,15 @@ function symbolDefFor(name, kind) {
   let sym = Tag[name], def
   if (sym == null) {
     Tag[name] = sym = newSymbol(name)
-    def = { sym,name,kind,x:nameCount++, expr: false, block: false, key: false,
+    def = { sym,name,kind,x:nameCount++, expr: false,
+            block: false,
+            key: false,
             lval: false, decl: false, func: false }
     if (kind === "node")
       def.esType = name
     symbols.set(sym,def)
   } else {
-    def = symbols.get(sym)
+    def = symInfo(sym)
     assert.ok(def)
     assert.equal(kind, def.kind, `for ${name}`)
   }
@@ -108,7 +100,7 @@ for(const i in ALIAS_KEYS) {
   }
 }
 {
-  const idDef = symbols.get(Tag.Identifier)
+  const idDef = symInfo(Tag.Identifier)
   idDef.fieldsMap = new Map([[Tag.name,
                               {atomicType:"string",
                                nodeTypes:new Set(),
@@ -116,7 +108,7 @@ for(const i in ALIAS_KEYS) {
                                enumValues:null,
                                default: null
                               }]])
-  const meDef = symbols.get(Tag.MemberExpression)
+  const meDef = symInfo(Tag.MemberExpression)
   meDef.fieldsMap = new Map([[Tag.property,
                               {atimicType:null,
                                nodeTypes:new Set([Tag.Identifier]),
@@ -144,7 +136,7 @@ const declsPosSet = new Set([Tag.id])
 for(const i in VISITOR_KEYS) {
   const nodeFields = NODE_FIELDS[i]
   const pos = Tag[i]
-  const def = symbols.get(pos)
+  const def = symInfo(pos)
   if (nodeFields != null) {
     const fieldsMap = def.fieldsMap || (def.fieldsMap = new Map())
     for(const j in nodeFields) {
@@ -166,6 +158,8 @@ for(const i in VISITOR_KEYS) {
       assert.equal(ty.chainOf.length, 2)
       if (ty.chainOf[0].type === "array") {
         const elem = getTy(ty.chainOf[1].each)
+        if (pos === Tag.params)
+          elem.declVar = true
         return {
           array: true,
           elem: elem,
@@ -212,14 +206,16 @@ for(const i in VISITOR_KEYS) {
       enumValues = enumValues.filter(i => i != null)
       assert.equal(enumValues.filter(v => v.substr == null).length,0)
     }
-    const expr = nt.has(Tag.Expression)
+    const expr = nt.has(Tag.Expression),
+          lval = nt.has(Tag.LVal)
     return {
       atomicType,nodeTypes:nt,nillable,enumValues,expr,
-      stmt: (nt.has(Tag.Statement) || nt.has(Tag.BlockStatement)),
+      stmt: nt.has(Tag.Statement),
       block: nt.has(Tag.BlockStatement) && !nt.has(Tag.Statement),
-      key: nt.has(Tag.Identifier) && !nt.has(Tag.Expression),
-      lval: nt.has(Tag.LVal),
+      key: nt.has(Tag.Identifier) && !expr && !lval,
+      lval,
       decl: (nt.has(Tag.VariableDeclaration) || nt.has(Tag.Declaration)),
+      mod: lval, 
       declVar: !expr && (
         nt.has(Tag.Identifier) && !notDeclsPosSet.has(pos)
           || declsPosSet.has(pos))
@@ -228,7 +224,7 @@ for(const i in VISITOR_KEYS) {
 }
 
 for(const i in VISITOR_KEYS) {
-  const def = symbols.get(Tag[i])
+  const def = symInfo(Tag[i])
   const aliases = def.aliases
   def.func = aliases.has(Tag.Function)
   def.scope = aliases.has(Tag.FunctionParent)
@@ -242,26 +238,37 @@ for(const i in Tag) {
   Tag[Tag[i]] = Tag[i]
 }
 
-function setComputed(nm,prop,tys) {
-  const cnm = `${nm}Computed`
-  const sym = Tag[nm]
-  const csym = Tag[cnm] = newSymbol(cnm)
-  const me = symbols.get(sym)
-  const mec = Object.assign({},me,{sym:csym})
-  symbols.set(csym,mec)
-  mec.fieldsMap = new Map(me.fieldsMap)
-  mec.fieldsMap.set(prop,{atomicType:null,
-                          nodeTypes:new Set([Tag.Expression])})
-  me.fieldsMap.set(prop,{atomicType:null,
-                          nodeTypes:new Set(tys)})
-  symbolsComputed.set(sym,mec)
+function setComputed(sym,prop,tys) {
+  const me = symInfo(sym)
+  const fi = me.fieldsMap.get(prop)
+  fi.propAlt = {atomicType:null,
+                nillable:false,
+                enumValues:null,
+                expr:true,
+                stmt:false,
+                block:false,
+                lval:false,
+                decl: false,
+                mod: false, 
+                declVar: false,
+                nodeTypes:new Set([Tag.Expression])}
+  fi.prop = Tag.computed
 }
 
-setComputed("MemberExpression",Tag.property,[Tag.Identifier])
-setComputed("ObjectProperty",Tag.key,
+setComputed(Tag.MemberExpression,Tag.property,[Tag.Identifier])
+setComputed(Tag.ObjectProperty,Tag.key,
             [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
-setComputed("ObjectMethod",Tag.key,
+setComputed(Tag.ObjectMethod,Tag.key,
             [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
+symInfo(Tag.UpdateExpression).fieldsMap.get(Tag.argument).mod = true
+symInfo(Tag.BlockStatement).block = true
+{
+  const me = symInfo(Tag.AssignmentExpression)
+  const lf = me.fieldsMap.get(Tag.left)
+  lf.propAlt = Object.assign({},lf,{expr:true})
+  lf.prop = Tag.operator
+}
+
 function isNode(node) {
   if (node == null)
     return false;
@@ -401,8 +408,19 @@ export function* resetFieldInfo(s) {
     if (i.enter) {
       const ti = typeInfo(i)
       const f = stack[stack.length-1]
-      if (f && f.fieldsMap)
-        i.value.fieldInfo = f.fieldsMap.get(i.pos)
+      if (f && f.fieldsMap) {
+        let fi = f.fieldsMap.get(i.pos)
+        if (fi.prop != null && i.value.node != null) {
+          if (fi.prop === Tag.operator) {
+            if (i.value.node.operator !== "=")
+              fi = fi.propAlt
+          } else {
+            if (i.value.node.computed)
+              fi = fi.propAlt
+          }
+        }
+        i.value.fieldInfo = fi
+      }
       switch(ti.kind) {
       case "array":
         stack.push(i.value.fieldInfo)
