@@ -54,10 +54,9 @@ const convertImpl = (pass) => R.pipe(
   i => i.toString(),
   parse,
   produce,
-  Scope.assignSym,
+  Scope.prepare,
   pass,
-  Scope.calcDecls,
-  Scope.solve,
+  Scope.resolve,
   consume,
   i => i.top,
   gen)
@@ -72,16 +71,14 @@ describe("generating new names", function() {
         for(const i of s) {
           if (i.pos === Tag.declarations && i.leave) {
             let prev = null, prevSym = null
-            const names = []
-                  .concat(genLikesNum.map(i => [i,`${i}${genId++}`]),
-                          genLikesSimpl.map(i => [i,i,Symbol(i)]))
-            for(const [i,name,sym] of names) {
+            const names = genLikesNum.map(Scope.newSym)
+            for(const sym of names) {
               yield s.enter(Tag.push,Tag.VariableDeclarator)
-              yield s.tok(Tag.id,Tag.Identifier,{nameLike:i,sym,node:{name},debx:debx++})
-              if (prev != null)
-                yield s.tok(Tag.init,Tag.Identifier,{node:{name:prev},sym:prevSym})
+              yield s.tok(Tag.id,Tag.Identifier,{sym})
+              if (prevSym != null)
+                yield s.tok(Tag.init,Tag.Identifier,{sym:prevSym})
               yield* s.leave()
-              prev = name, prevSym = sym
+              prevSym = sym
             }
           }
           yield i
@@ -95,25 +92,25 @@ describe("generating new names", function() {
         var a = 10, b = 10;
       },["a","b","c","d","a"]))
       .to.equal(pretty(function a() {
-      var a = 10, b = 10, a1, b1 = a1, c = b1, d = c, a2 = d;
+      var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d;
     }))
   })
   it("should generate uniq names 2", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
-      },["a","b","c","d","a"],["a"]))
+      },["a","b","c","d","a","a"]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, a1, b1 = a1, c = b1, d = c, a2 = d, a3 = a2;
+        var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d, a2 = a1;
       }))
   })
   it("should generate uniq names 3", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
-      },["a","b","$$$"],["a","$$$"]))
+      },["a","b","a",""]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, a1, b1 = a1, c = b1, a2 = c, d = a2;
+        var a = 10, b = 10, _a, _b = _a, a1 = _b, c = a1;
       }))
   })
   it("should generate uniq names 4", function() {
@@ -123,11 +120,11 @@ describe("generating new names", function() {
         function c() {
           var d = 10, e = 10;
         }
-      },["a","b","$$$"],["a","$$$"]))
+      },["a","b","a",""]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, a1, b1 = a1, d = b1, a2 = d, e = a2;
+        var a = 10, b = 10, _a, _b = _a, a1 = _b, d = a1;
         function c() {
-          var d = 10, e = 10, a, b = a, c = b, a1 = c, f = a1;
+          var d = 10, e = 10, a, b = a, _a = b, c = _a;
         }
       }))
   })
@@ -135,11 +132,11 @@ describe("generating new names", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10,c,d,e,f,g,h,k,m,n,x,y,z;
-      },["a","b","$$$"],["a","$$$"]))
+      },["a","b","a",""]))
       .to.equal(pretty(function a() {
-        var a = 10, b = 10, c, d, e, f, g, h, k, m, n, x, y,
-            z, a1, b1 = a1, c1 = b1, a2 = c1, d1 = a2;
-      }))
+        var a = 10, b = 10, c, d, e, f, g, h,
+            k, m, n, x, y, z, _a,
+            _b = _a, a1 = _b, a2 = a1; }))
   })
   it("should generate uniq names 6", function() {
     expect(
@@ -154,17 +151,17 @@ describe("generating new names", function() {
         {
           let a = 10, c = 20, e = 30;
         }
-      }`,["a","b","$$$"],["a","$$$"]))
+      }`,["a","b","a",""]))
       .to.equal(pretty(`function f() {
-        let a = 10, b = 10, a1, b1 = a1, c = b1, a2 = c, d = a2;
+        let a = 10, b = 10, _a, _b = _a, a1 = _b, c = a1;
         {
-          let c = a, a1, b = a1, d = b, a2 = d, e = a2;
+          let c = a, _a, b = _a, a1 = b, d = a1;
         }
         {
-          let c = b, d = 20, a, b1 = a, e = b1, a1 = e, f = a1;
+          let c = b, d = 20, a, _b = a, _a = _b, e = _a;
         }
         {
-          let a = 10, c = 20, e = 30, a1, b = a1, d = b, a2 = d, f = a2;
+          let a = 10, c = 20, e = 30, _a, b = _a, a1 = b, d = a1;
         }
       }`))
   })
@@ -187,11 +184,11 @@ describe("converting const/let to var", function() {
       }`)).to.equal(pretty(function a() {
         var a = 10;
         {
-          var a1 = 20;
-          a1++;
+          var _a = 20;
+          _a++;
           {
-            var a4 = 30, a2 = 40, a3 = 50;
-            a4++;
+            var a1 = 30, a2 = 40, a3 = 50;
+            a1++;
           }
         }
       }))
@@ -217,11 +214,11 @@ describe("converting const/let to var", function() {
           var a = 10;
         }
         {
-          var a1 = 20;
-          a1++;
+          var _a = 20;
+          _a++;
           {
-            var a4 = 30, a2 = 40, a3 = 50;
-            a4++;
+            var a1 = 30, a2 = 40, a3 = 50;
+            a1++;
           }
         }
         a()
@@ -242,23 +239,27 @@ describe("converting const/let to var", function() {
           let a = 20;
           a++
           {
-            let a = 30, a2 = 40, a3 = 50;
+            let a = 30, _a = 40, a1 = 50;
             a++;
           }
         }
         a()
       }`)).to.equal(pretty(function a() {
         function a() {
-          a(); { var a1 = 10; a1++; }
-          var a4 = 20;
-          a4++;
+          a();
+          {
+            var a2 = 10;
+            a2++;
+          }
+          var a3 = 20;
+          a3++;
         }
         {
-          var a1 = 20;
-          a1++;
+          var a2 = 20;
+          a2++;
           {
-            var a4 = 30, a2 = 40, a3 = 50;
-            a4++;
+            var a3 = 30, _a = 40, a1 = 50;
+            a3++;
           }
         }
         a();
@@ -274,7 +275,7 @@ describe("converting const/let to var", function() {
       }`)).to.equal(pretty(function a() {
         a();
         var a = 10;
-        { var a1 = 10; } }))
+        { var _a = 10; } }))
     })
   })
   context("if every declaration is moved to its scope start", function() {
@@ -292,9 +293,9 @@ describe("converting const/let to var", function() {
       }
       }`)).to.equal(pretty(function a() {
         var a = 10;
-        var a1 = 20;
-        var a4 = 30, a2 = 40, a3 = 50;
-        { a1++; { a4++; } }
+        var _a = 20;
+        var a1 = 30, a2 = 40, a3 = 50;
+        { _a++; { a1++; } }
       }))
     })
   })

@@ -79,9 +79,6 @@ export function* verify(s) {
       if (i.type === Tag.Array) {
         assert.ok(i.value.fieldInfo.array,"expected array field")
       } else if (ti.kind === "node") {
-//        const fts = i.value.fieldInfo.nodeTypes, als = ti.aliases
-//        assert.ok(fts.has(i.type) || [...fts].find(als.has,als) !== undefined,
-//                  "field type mismatch")
       }
     }
     if (i.enter && !i.leave) {
@@ -198,6 +195,7 @@ function* browserTraceImpl(prefix,s) {
                   : "color:steelblue",
                   "")
     }
+    
     if (i.enter && !i.leave && console.group != null)
       console.group(descr)
     let n = ""
@@ -207,18 +205,19 @@ function* browserTraceImpl(prefix,s) {
     const commentsStyle = []
     const t = [].concat(i.value.comments || [], i.value.tcomments || [])
     if (t.length) {
-      styles.push("color:green;font-size:large")
+      const pstyle = "color:green;font-size:large"
+      styles.push(pstyle)
       for(const j of t) {
         comments.push(`%c${j.txt}%c`)
         const mod = !i.enter
               ? "font-size:small;font-style:italic"
-              : "font-weight:bolder"
+              : "font-weight:bolder;font-size:large"
         const s = `${j.style || ''}${mod}`
         styles.push(s,"")
       }
       if (comments.length) {
-        commentsTxt = "%c[" + comments.join(" ") + "]%c"
-        styles.push("")
+        commentsTxt = "%c[" + comments.join(" ") + "%c]%c"
+        styles.push(pstyle,"")
       }
     }
     if (node != null && i.type !== Tag.Array && symKind(i.type) !== "ctrl") {
@@ -267,6 +266,16 @@ function traceArgs(impl) {
     if (s == null || s[Symbol.iterator] == null)
       return (s) => impl(prefix,s)
     return impl(prefix,s)
+  }
+}
+
+export function* setSymComments(s) {
+  for(const i of s) {
+    if (i.enter && i.value.sym && i.value.sym.id) {
+      const c = i.value.comments || (i.value.comments = [])
+      c.push({txt:i.value.sym.id})
+    }
+    yield i
   }
 }
 

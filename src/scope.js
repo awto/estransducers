@@ -2,64 +2,173 @@ import * as Kit from "./kit"
 import * as R from "ramda"
 import {Tag,TypeInfo as TI,symbol,tok,resetFieldInfo} from "./core"
 import * as assert from "assert"
+import * as Trace from "./trace"
 
-export const outOfScopeSym = Symbol.for("<out of scope>") 
+const globals = new Map()
 
-export const assignSym = R.pipe(
+let symNum = 0
+let curSymId = 0
+
+// String -> Sym
+export function newSym(name = "") {
+  return { name, orig: name, id: `${name}@${curSymId++}` }
+}
+
+/** 
+ * resets symbol number and value decl field 
+ * for new identifiers from transform passes
+ */
+export const resetSym = R.pipe(
   resetFieldInfo,
-  function assignSym(si) {
-    const sa = Kit.toArray(si)
-    let s = Kit.auto(sa)
-    const root = s.first.value
-    function varScope(scope) {
-      for(const i of s.sub()) {
-        if (i.enter) {
-          switch(i.type) {
-          case Tag.VariableDeclaration:
-            if (i.value.node.kind === "var") {
-              Kit.skip(s.peelTo(Tag.declarations))
-              for(const j of s.sub()) {
-                if (j.enter) {
-                  assert.equal(s.cur().pos, Tag.id)
-                  for(const k of s.one()) {
-                    if (k.enter && k.type === Tag.Identifier
-                        && i.value.sym == null) {
-                      scope.set(k.value.node.name,k.value)
-                    }
+  function* resetSym(s) {
+    for(const i of s) {
+      if (i.enter && i.type === Tag.Identifier
+          && i.value.sym != null) {
+        if (i.value.decl == null) {
+          const fi = i.value.fieldInfo
+          i.value.decl = fi.declVar
+        }
+        if (i.value.decl) {
+          if (i.value.sym.num == null)
+            i.value.sym.num = symNum++        
+          i.value.sym.name = i.value.sym.orig
+        }
+      }
+      yield i
+    }
+  })
+
+/**
+ * calculates unordered definitions scope, i.e, var kind variable declarations
+ * or function declarations
+ * 
+ * for scope nodes:
+ *
+ *     type Value = Value & {varScope: Map<String,Value>}
+ * 
+ * the Value in the Map pointes to Identifier's Value
+ */
+export function calcUnorderedScope(si) {
+  const sa = Kit.toArray(si)
+  let s = Kit.auto(sa)
+  const root = s.first.value
+  function walk(scope) {
+    for(const i of s.sub()) {
+      if (i.enter) {
+        switch(i.type) {
+        case Tag.VariableDeclaration:
+          if (i.value.node.kind === "var") {
+            Kit.skip(s.peelTo(Tag.declarations))
+            const unordered = i.value.node.kind === "var"
+            for(const j of s.sub()) {
+              if (j.enter) {
+                assert.equal(s.cur().pos, Tag.id)
+                for(const k of s.one()) {
+                  if (k.enter && k.type === Tag.Identifier
+                      && k.value.sym == null
+                      && k.value.node.name != null) {
+                    scope.set(k.value.node.name,k.value)
+                    k.value.unordered = unordered
                   }
-                  if (s.curLev() != null)
-                    varScope(scope)
                 }
+                if (s.curLev() != null)
+                  walk(scope)
               }
-              Kit.skip(s.leave())
             }
-            break
-          case Tag.ClassDeclaration:
-          case Tag.FunctionDeclaration:
-            const j = s.curLev()
-            if (j != null) {
-              assert.equal(j.pos,Tag.id)
-              scope.set(j.value.node.name,j.value)
-            } 
-          case Tag.ObjectMethod:
-          case Tag.ClassMethod:
-          case Tag.FunctionExpression:
-          case Tag.ArrowFunctionExpression:
-            varScope(i.value.varScope = new Map())
-            break
+            Kit.skip(s.leave())
           }
+          break
+        case Tag.Identifier:
+          if (i.value.decl)
+            i.value.unordered = null
+          break
+        case Tag.ClassDeclaration:
+        case Tag.FunctionDeclaration:
+          const j = s.curLev()
+          if (j != null) {
+            assert.equal(j.pos,Tag.id)
+            if (j.value.node.name != null)
+              scope.set(j.value.node.name,j.value)
+            j.value.unordered = true
+            walk(i.value.varScope = new Map())
+          } 
+        case Tag.FunctionExpression:
+        case Tag.ObjectMethod:
+        case Tag.ClassMethod:
+          const k = s.curLev()
+          if (k != null) {
+            const iscope = i.value.varScope = new Map()
+            if (k.pos === Tag.id && k.value.node.name != null)
+              iscope.set(k.value.node.name,k.value)
+            walk(iscope)
+          }
+          break
+        case Tag.ArrowFunctionExpression:
+          if (s.curLev() != null)
+            walk(i.value.varScope = new Map())
+          break
         }
       }
     }
-    varScope(root.varScope = new Map())
-    let syms = root.syms = new Map()
+  }
+  walk(root.varScope = new Map())
+  return sa
+}
+
+/** puts init field before id in VariableDeclarator */
+function reorderVarDecl(si) {
+  const s = Kit.auto(si)
+  function* walk(sw) {
+    for(const i of sw) {
+      yield i
+      if (i.enter && i.type === Tag.VariableDeclarator
+          && i.value.node.kind !== "var") {
+        const id = [...walk(s.one())]
+        if (s.curLev() != null) {
+          assert.equal(s.curLev().pos,Tag.init)
+          yield* walk(s.one())
+        }
+        yield* id
+      }
+    }
+  }
+  return walk(s)
+}
+
+/**
+ * assigns unique Symbol object for each variable declaration and usage
+ * stores it in sym fields, for root value stores map syms mapping the
+ * sym object to a SymbolInfo structure
+ * 
+ *     interface Sym {
+ *       name: String,
+ *       orig: String,
+ *       num: number,
+ *       sym: Symbol,
+ *       unordered: boolean,
+ *       declScope: TokenValue
+ *     }
+ * 
+ * for each identifier referening variable:
+ *
+ *     type Value = Value & {sym:Sym,decl?:true}
+ * 
+ */
+export const assignSym = R.pipe(
+  resetFieldInfo,
+  function assignSym(si) {
     function addVarScope(scope,i) {
-      for(const [j,jv] of i.value.varScope)
-        scope.set(j,jv.sym || (jv.sym = Symbol(j)))
+      if (i.value.varScope != null) {
+        for(const [j,jv] of i.value.varScope) {
+          scope.set(j,jv.sym || (jv.sym = newSym(j)))
+        }
+      }
       return scope
     }
-    s = Kit.auto(sa)
-    function decls(scope,kind = "var") {
+    const sa = Kit.toArray(si)
+    const s = Kit.auto(reorderVarDecl(sa))
+    const root = s.first.value
+    function decls(scope,unordered,root) {
       for(const i of s.sub()) {
         if (i.enter) {
           switch(i.type) {
@@ -67,78 +176,112 @@ export const assignSym = R.pipe(
             const fi = i.value.fieldInfo
             if (fi.declVar) {
               i.value.decl = true
-              i.value.declKind = kind
-              let {node:{name},nameLike:like,sym} = i.value
-              if (kind === "var") {
-                assert.ok(sym)
+              let {node:{name},sym} = i.value
+              if (i.value.unordered) {
+                if (sym == null) {
+                  sym = i.value.sym = newSym(name)
+                  root.varScope.set(name,i.value)
+                  scope.set(name,sym)
+                }
               } else {
-                sym = sym || (i.value.sym = Symbol(name))
+                sym = sym || (i.value.sym = newSym(name))
                 scope.set(name,sym)
               }
-              syms.set(sym,{name:like === "$$$" ? null : like || name,
-                            num:syms.size,
-                            sym,
-                            rename:like != null})
-            } else {
+              if (sym.num == null)
+                sym.num = symNum++
+              sym.name = sym.orig
+              sym.unordered = i.value.unordered || unordered
+              sym.declScope = root
+            } else if (fi.expr || fi.lval) {
               i.value.decl = false
-              const {name} = i.value.node
               if (i.value.sym == null) {
-                let s = scope.get(name)
-                if (s == null) {
-                  s = Symbol(name)
-                  scope.set(name,s)
+                const {name} = i.value.node
+                let sym = scope.get(name)
+                if (sym == null) {
+                  const undef = globals.get(name)
+                  if (undef == null) {
+                    sym = newSym(name)
+                    globals.set(name,sym)
+                    i.value.sym = sym
+                    sym.num = -1
+                    sym.unordered = false
+                    sym.declScope = null
+                  } else {
+                    i.value.sym = undef
+                  }
+                  break
                 }
-                i.value.sym = scope.get(i.value.node.name) || outOfScopeSym
+                i.value.sym = sym
               }
             }
             break
           case Tag.VariableDeclaration:
-            decls(scope,i.value.node.kind)
+            decls(scope,i.value.node.kind === "var",root)
             break
           case Tag.BlockStatement:
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.ForOfStatement:
-            decls(new Map(scope))
+            decls(new Map(scope),false,root)
             break
+          case Tag.File:
           case Tag.FunctionDeclaration:
           case Tag.ObjectMethod:
           case Tag.ClassMethod:
           case Tag.FunctionExpression:
           case Tag.ArrowFunctionExpression:
-            const next = new Map(scope)
-            decls(addVarScope(new Map(scope),i))
+            decls(addVarScope(new Map(scope),i),false,i.value)
             break
           }
         }
       }
     }
-    decls(addVarScope(new Map(),s.first))
+    decls(new Map(),false,s.first.value)
     return sa
   })
 
-/** Returns list of syms declared in the tokens */
-export function queryLocalNames(s) {
-  const res = new Set()
-  for(const i of s)
-    if (i.enter && i.type === Tag.Identifier && i.value.decl) {
-      res.add(i.value.node.name)
+/** 
+ * for each variable sets its usages scope (list of functions where the 
+ * variable is used except declaration function)
+ * 
+ *     type Sym = Sym & { refScopes: Set<TokenValue> }
+ */
+export function calcRefScopes(si) {
+  const sa = Kit.toArray(si)
+  const s = Kit.auto(sa)
+  function scope(root) {
+    for(const i of s.sub()) {
+      if (i.enter) {
+        if (i.value.func) {
+          scope(i.value)
+        } else if (i.type === Tag.Identifier) {
+          const si = i.value.sym
+          if (si != null && si.declScope !== root)
+            (si.refScopes || (si.refScopes = new Set())).add(root)
+        }
+      }
+    }
   }
-  return res
+  scope(s.first.value)
+  return sa
 }
 
-export function calcDecls(si) {
+/** 
+ * for each block calculates a set of variables referenced in it 
+ *
+ *    type Value = Value * { varRefs?: Sym[] }
+ */
+export function calcBlockRefs(si) {
   const sa = Kit.toArray(si)
   const s = Kit.auto(sa)
   function scope(value,rootDecls) {
     function block(value,decls,refs) {
-      let locref = false
-      function walk(kind) {
+      function walk(unordered) {
         for(const i of s.sub()) {
           if (i.enter) {
             switch(i.type) {  
             case Tag.VariableDeclaration:
-              walk(i.value.node.kind)
+              walk(i.value.node.kind === "var")
               break
             case Tag.FunctionDeclaration:
             case Tag.ObjectMethod:
@@ -169,60 +312,92 @@ export function calcDecls(si) {
               block(i.value,new Set(),nrefs).forEach(refs.add,refs)
               break
             case Tag.Identifier:
-              if (i.value.decl != null && i.value.sym !== outOfScopeSym) {
+              if (i.value.sym != null) {
                 if (i.value.decl)
-                  (kind === "var" ? rootDecls : decls).add(i.value.sym)
+                  (unordered ? rootDecls : decls).add(i.value.sym)
+                refs.add(i.value.sym)
               }
-              refs.add(i.value.sym)
               break
             }
           }
         }
       }
       walk()
-      if (!locref)
-        value.varRefs = refs
+      Kit.skip(s.leave())
+      value.varRefs = decls.size ? refs : null
+      value._debRefs = refs
+      value._debDecls = decls
       return [...refs].filter(j => !decls.has(j))
     }
-    return block(value,rootDecls,rootDecls)
+    const varKindDecls = value.varScope
+          && [...value.varScope.values()].map(i => i.sym) || []
+    let res
+    const params = new Set()
+    for(const i of s.sub()) {
+      if (i.enter) {
+        if (i.type === Tag.Identifier && i.value.decl != null) {
+          if (i.value.decl)
+            params.add(i.value.sym)
+        } else if (i.pos === Tag.body) {
+          rootDecls.forEach(rootDecls.add,rootDecls)
+          params.forEach(rootDecls.add,rootDecls)
+          res = block(i.value,
+                      i.value._debRootDecls = rootDecls,
+                      i.value._debRootRefs = new Set(varKindDecls))
+        }
+      }
+    }
+    return res || new Set()
   }
-  scope(s.first.value,s.first.varRefs = new Set())
+  scope(s.peel().value,new Set())
   return sa
 }
 
 const nameOpts = ["a","b","c","d","e","f","g","h","k","m","n","x","y","z"]
+
+function namePos(n,pos) {
+  if (pos === 0)
+    return n
+  if (pos === 1)
+    return "_" + n
+  return `${n}${pos-1}`
+}
 
 /** 
  * after adding some names, there may be some naming conflicts
  * this pass resolves them by looking for same name but different symbols ids
  * and renaming them accordingly
  */
-export function* solve(si) {
+export function solve(si) {
   const sa = Kit.toArray(si)
   const root = sa[0].value
-  const {syms} = root
-  const constrs = new Map() //: Map<String,{syms:Symbol[],names:Set<String>}[]>
-  let renames = new Map() //: Map<Symbol,String>
-  const anyPat //: Map<Symbol,[[SymbolInfo]]>
-        = new Map([...syms.values()]
-                  .filter(i => i.name == null)
-                  .map(i => [i.sym,[]]))
-  const refsFrames = [] //: [[SymbolInfo]]
+  const refsFrames = []   //: Sym[][]
+  const symVals = [...globals.values()]
+  const anyPat = new Map()
   for(const i of sa) {
-    if (i.enter && i.value.varRefs != null) {
-      const refs = [...i.value.varRefs].map(syms.get,syms) //: [SymbolInfo]
-      refsFrames.push(refs)
-      for(const i of refs) {
-        if (i.name == null) {
-          anyPat.get(i.sym).push(...refs)
+    if (i.enter) {
+      if (i.value.varRefs != null) {
+        const refs = [...i.value.varRefs].sort((a,b) => a.num - b.num) //:Sym[]
+        if (refs.length)
+          refsFrames.push(refs)
+        for(const i of refs) {
+          if (i.name === "") {
+            let ap = anyPat.get(i)
+            if (ap == null)
+              anyPat.set(i,ap = new Set())
+            refs.forEach(ap.add,ap)
+          }
         }
       }
+      if (i.type === Tag.Identifier && i.value.decl === true)
+        symVals.push(i.value.sym)
     }
   }
-  for(const [s,is] of anyPat) {
+  for(const [s,is] of [...anyPat].sort((a,b) => a[0].num - b[0].num)) {
     const ism = new Map()
-    for(const i of is.map(i => i.name).filter(i => i != null))
-      ism.set(i,(ism.get(i) || 0)+1)
+    for(const i of is)
+      if (i.name != null)
+        ism.set(i.name,(ism.get(i) || 0)+1)
     let mn, mv
     for(const i of nameOpts) {
       const c = ism.get(i)
@@ -235,167 +410,71 @@ export function* solve(si) {
         mv = i 
       }
     }
-    syms.get(s).name = mv
+    s.name = mv
   }
-  for(const i of syms.values()) {
-    let fi = constrs.get(i.name)
+  // temporarly extending Sym with
+  // type Sym = Sym & {dom:Set<number>,namePos:number}
+  const store = new Map() //: Map<String,Sym[][]>,
+  for(const i of symVals) {
+    let fi = store.get(i.name)
     if (fi == null)
-      constrs.set(i.name,fi = [])
-    if (i.rename) {
-      renames.set(i.sym,i.name)
+      store.set(i.name,fi = new Set())
+  }
+  for(const i of refsFrames) {
+    const names = new Set(i.map(j => j.name))
+    for(const j of names) {
+      let fi = store.get(j)
+      if (fi == null)
+        store.set(j,fi = new Set())
+      fi.add(i.filter(k => k.name === j))
     }
   }
-  for(const refs of refsFrames) {
-    const names = new Map() //: Map<String,[SymbolInfo]>
-    for(const i of refs) {
-      let sil = names.get(i.name)
-      if (sil == null)
-        names.set(i.name,sil = [])
-      sil.push(i)
-    }
-    const namesSet = new Set()
-    for(const [n,i] of names) {
-      constrs.get(n).push({
-        names:namesSet,
-        syms:i.sort((a,b) => a.num - b.num).map(a => a.sym)
-      })
-      namesSet.add(n)
-    }
+  const names = new Set(store.keys())
+  up: for(const [n,refs] of store) {
+    for(const i of refs)
+      if (i.length > 1)
+        continue up
+    store.delete(n)
   }
-  const names = new Set(constrs.keys())
-  for(const [i,n] of constrs) {
-    if (n.find(j => j.syms.length > 1) === undefined)
-      constrs.delete(i)
-  }
-  for(const [n,i] of constrs) {
-    const syms = new Set()
-    const maxlen = Math.max(...i.map(j => j.syms.length))
-    const adj = []
-    let curadj = 0
-    for(let j = 0; j < maxlen; j++) {
-      while(names.has(n+(j+curadj)))
-        curadj++
-      adj.push(curadj)
-    }
-    for(const {syms:js} of i) {
-      js.forEach(syms.add,syms)
-    }
-    const skipNum = new Set()
-    for(const j of syms) {
-      let x = 0
-      let curMax = 0
-      for(const {syms:tup} of i)
-        curMax = Math.max(curMax,tup.indexOf(j))
-      if (curMax !== 0)
-        renames.set(j,n+(curMax+adj[curMax]))
+  for(const [n,refs] of store) {
+    const syms = new Set([].concat(...refs))
+    const osyms = [...syms].sort((a,b) => a.num - b.num)
+    for(const i of osyms)
+      i.dom = new Set()
+    for(const i of osyms) {
+      let pos = 0, nn
+      for(;;pos++) {
+        if (i.dom.has(pos))
+          continue
+        nn = namePos(n,pos)
+        if (pos > 0 && names.has(nn))
+          continue
+        break
+      }
+      i.name = nn
+      for(const j of refs) {
+        if (j.length && j[0] === i) {
+          j.shift()
+          for(const k of j)
+            k.dom.add(pos)
+        }
+      }
     }
   }
   for(const i of sa) {
     if (i.enter && i.type === Tag.Identifier && i.value.sym != null) {
-      const name = renames.get(i.value.sym)
-      if (name != null)
-        i.value.node.name = name
-    }
-    yield i
-  }
-}
-
-export function assignSymbolsDecls(s) {
-  const sa = Kit.toArray(s)
-  s = Kit.auto(sa)
-  let num = 0
-  function scope(root,par) {
-    let locs,refs,vars
-    let ctx = root.ctx
-    if (ctx == null) {
-      vars = Object.create(par)
-      locs = new Map()
-      refs = new Map()
-      root.ctx = {vars,locs,refs}
-    } else {
-      vars = ctx.vars
-      locs = ctx.locs
-      refs = ctx.refs
-    }
-    const newLocs = new Map()
-    for(const i of s.sub()) {
-      if (i.enter) {
-        switch(i.pos) {
-        case Tag.body:
-          block(i.value,vars)
-          break
-        case Tag.params:
-          for(const j of s.sub()) {
-            if (j.type === Tag.Identifier && j.value.sym == null)
-              newDecl(j.value,root,vars,true)
-          }
-          break
-        }
-      }
-    }
-    return newLocs
-    function newDecl(value,block,vars,param=false) {
-      const {name} = value.node
-      const sym = value.sym = Symbol(name)
-      const info = {sym,name,param:false,root,
-                    block,value:value,num:num++}
-      locs.set(sym,info)
-      newLocs.set(sym,info)
-      vars[name] = info
-    }
-    function block(b,vars) {
-      for(const i of s.sub()) {
-        if (i.enter) {
-          switch(i.type) {
-          case Tag.VariableDeclarator:
-            for(const j of s.one()) {
-              if (j.enter && j.type === Tag.Identifier && j.value.sym == null)
-                newDecl(j.value,b,vars)
-            }
-            break
-          case Tag.BlockStatement:
-          case Tag.ForStatement:
-          case Tag.ForInStatement:
-          case Tag.ForOfStatement:
-          case Tag.Program:
-            block(i.value,i.value.blockVars = Object.create(vars))
-            break
-          case Tag.FunctionDeclaration:
-          case Tag.ObjectMethod:
-          case Tag.ClassMethod:
-          case Tag.FunctionExpression:
-          case Tag.ArrowFunctionExpression:
-            const sub = scope(i.value,vars)
-            for(const [s,i] of sub) {
-              locs.set(s,i)
-              newLocs.set(s,i)
-            }
-            break
-          case Tag.Identifier:
-            if (i.value.sym == null) {
-              switch(i.pos) {
-              case Tag.local:
-              case Tag.id:
-                newDecl(i.value,b,vars)
-                break
-              default:
-                const info = vars[i.value.node.name]
-                if (info != null) {
-                  i.value.sym = info.sym
-                  refs.set(info.sym,info)
-                  if (info.root !== root) {
-                    (info.capt || (info.capt = new Set())).add(root)
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      i.value.node.name = i.value.sym.name
     }
   }
-  const i = s.take()
-  scope(i.value,{})
   return sa
 }
+
+export const prepare = R.pipe(
+  calcUnorderedScope,
+  assignSym)
+
+export const resolve = R.pipe(
+  resetSym,
+  calcBlockRefs,
+  solve)
 
