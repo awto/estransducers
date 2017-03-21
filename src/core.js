@@ -240,8 +240,11 @@ for(const i in Tag) {
 
 function setComputed(sym,prop,tys) {
   const me = symInfo(sym)
-  const fi = me.fieldsMap.get(prop)
-  fi.propAlt = {atomicType:null,
+  me.propAlt = Object.assign(
+    {},
+    me,
+    {fieldsMap: (new Map(me.fieldsMap))
+     .set(prop,{atomicType:null,
                 nillable:false,
                 enumValues:null,
                 expr:true,
@@ -251,8 +254,8 @@ function setComputed(sym,prop,tys) {
                 decl: false,
                 mod: false, 
                 declVar: false,
-                nodeTypes:new Set([Tag.Expression])}
-  fi.prop = Tag.computed
+                nodeTypes:new Set([Tag.Expression])})})
+  me.prop = Tag.computed
 }
 
 setComputed(Tag.MemberExpression,Tag.property,[Tag.Identifier])
@@ -264,9 +267,13 @@ symInfo(Tag.UpdateExpression).fieldsMap.get(Tag.argument).mod = true
 symInfo(Tag.BlockStatement).block = true
 {
   const me = symInfo(Tag.AssignmentExpression)
-  const lf = me.fieldsMap.get(Tag.left)
-  lf.propAlt = Object.assign({},lf,{expr:true})
-  lf.prop = Tag.operator
+  me.propAlt = Object.assign(
+    {},
+    me,
+    {fieldsMap:(new Map(me.fieldsMap))
+     .set(Tag.left,
+          Object.assign({},me.fieldsMap.get(Tag.left),{expr:true}))})
+  me.prop = Tag.operator
 }
 
 function isNode(node) {
@@ -406,26 +413,24 @@ export function* resetFieldInfo(s) {
   const stack = []
   for(const i of s) {
     if (i.enter) {
-      const ti = typeInfo(i)
+      let ti = typeInfo(i)
       const f = stack[stack.length-1]
-      if (f && f.fieldsMap) {
-        let fi = f.fieldsMap.get(i.pos)
-        if (fi.prop != null && i.value.node != null) {
-          if (fi.prop === Tag.operator) {
-            if (i.value.node.operator !== "=")
-              fi = fi.propAlt
-          } else {
-            if (i.value.node.computed)
-              fi = fi.propAlt
-          }
-        }
-        i.value.fieldInfo = fi
-      }
+      if (f && f.fieldsMap)
+        i.value.fieldInfo = f.fieldsMap.get(i.pos)
       switch(ti.kind) {
       case "array":
         stack.push(i.value.fieldInfo)
         break
       case "node":
+        if (ti.prop != null && i.value.node != null) {
+          if (ti.prop === Tag.operator) {
+            if (i.value.node.operator !== "=")
+              ti = ti.propAlt
+          } else {
+            if (i.value.node.computed)
+              ti = ti.propAlt
+          }
+        }
         stack.push(ti)
         break
       default:
