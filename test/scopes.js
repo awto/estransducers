@@ -21,7 +21,34 @@ function varDeclsEs5(si) {
           continue
         case Tag.VariableDeclaration:
           i.value.node.kind = "var"
-          decls.push(s.peel(Kit.setPos(i,Tag.push)),...s.sub(),...s.leave())
+          decls.push(s.peel(Kit.setPos(i,Tag.push)))
+          let noinit = true
+          if (i.pos === Tag.push) {
+            for(const j of s.sub()) {
+              if (j.enter && j.pos === Tag.init) {
+                const lab = s.label()
+                let pos = i.pos
+                yield s.enter(Tag.push,Tag.ExpressionStatement)
+                yield s.enter(Tag.expression,Tag.AssignmentExpression,{node:{operator:"="}})
+                yield s.tok(Tag.left,Tag.Identifier,decls[decls.length-1].value) 
+                yield s.peel(Kit.setPos(j,Tag.right))
+                yield* s.sub()
+                yield* lab()
+                decls.push(s.tok(Tag.init,Tag.Null))
+              } else
+                decls.push(j)
+            }
+          } else {
+            for(const j of s.sub()) {
+              if (j.enter && j.pos === Tag.id) {
+                yield s.peel(Kit.setPos(j,i.pos))
+                yield* s.sub()
+                yield* s.leave()
+              } else
+                decls.push(j)
+            }
+          }
+          decls.push(...s.leave())
           continue
         }
       }
@@ -277,10 +304,25 @@ describe("converting const/let to var", function() {
         var a = 10;
         { var _a = 10; } }))
     })
+    it("should keep names uniq 5", function() {
+      expect(convert(`function a() {
+        const a = [1,2,3];
+        for(const a of a) {
+          let a = a+1
+          console.log(a)
+        }
+      }`)).to.equal(pretty(function a() {
+        var a = [1,2,3];
+        for (var _a of a) {
+          var a1 = _a+1;
+          console.log(a1);
+        }
+      }))
+    })
   })
   context("if every declaration is moved to its scope start", function() {
     const convert = convertImpl(varDeclsEs5)
-    it("should keep names uniq 5", function() {
+    it("should keep names uniq 6", function() {
       expect(convert(`function a() {
       var a = 10;
       {
@@ -292,10 +334,38 @@ describe("converting const/let to var", function() {
         }
       }
       }`)).to.equal(pretty(function a() {
-        var a = 10;
-        var _a = 20;
-        var a1 = 30, a2 = 40, a3 = 50;
-        { _a++; { a1++; } }
+        var a;
+        var _a;
+        var a1, a2, a3;
+        a = 10;
+        {
+          _a = 20;
+          _a++;
+          {
+            a1 = 30;
+            a2 = 40;
+            a3 = 50;
+            a1++;
+          }
+        }
+      }))
+    })
+    it("should keep names uniq 7", function() {
+      expect(convert(`function a() {
+        const a = {a:1,b:2};
+        for(const a in a) {
+          let a = a
+          console.log(a)
+        }
+      }`)).to.equal(pretty(function a() {
+        var a;
+        var _a;
+        var a1;
+        a = { a: 1, b: 2 };
+        for (_a in a) {
+          a1 = _a;
+          console.log(a1);
+        }
       }))
     })
   })

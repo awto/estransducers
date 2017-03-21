@@ -115,20 +115,34 @@ export function calcUnorderedScope(si) {
   return sa
 }
 
-/** puts init field before id in VariableDeclarator */
+/** puts init field before id in VariableDeclarator and for-of, for-in */
 function reorderVarDecl(si) {
   const s = Kit.auto(si)
   function* walk(sw) {
     for(const i of sw) {
       yield i
-      if (i.enter && i.type === Tag.VariableDeclarator
-          && i.value.node.kind !== "var") {
-        const id = [...walk(s.one())]
-        if (s.curLev() != null) {
-          assert.equal(s.curLev().pos,Tag.init)
-          yield* walk(s.one())
+      if (i.enter) {
+        switch(i.type) {
+        case Tag.VariableDeclarator:
+          if (i.value.node.kind !== "var") {
+            const id = [...walk(s.one())]
+            if (s.curLev() != null) {
+              assert.equal(s.curLev().pos,Tag.init)
+              yield* walk(s.one())
+            }
+            yield* id
+          }
+          break
+        case Tag.ForOfStatement:
+        case Tag.ForInStatement:
+          const j = s.curLev()
+          if (j.type === Tag.VariableDeclaration) {
+            const left = [...s.one()]
+            yield* s.one()
+            yield* left
+          }
+          break
         }
-        yield* id
       }
     }
   }
