@@ -275,6 +275,23 @@ symInfo(Tag.BlockStatement).block = true
           Object.assign({},me.fieldsMap.get(Tag.left),{expr:true}))})
   me.prop = Tag.operator
 }
+{
+  // fixing patterns
+  const patField = symInfo(Tag.VariableDeclarator).fieldsMap.get(Tag.id)
+  const oprop = symInfo(Tag.ObjectProperty)
+  const aprop = symbolDefFor("AssignmentProperty","node")
+  aprop.esType = "ObjectProperty"
+  aprop.fieldsMap = new Map(oprop.fieldsMap)
+  aprop.fieldsMap.set(Tag.value,patField)
+  const op = symInfo(Tag.ObjectPattern)
+  const el = op.fieldsMap.get(Tag.properties).elem
+  el.decl = el.declVar = true
+  el.ti = aprop
+  const els = symInfo(Tag.ArrayPattern).fieldsMap.get(Tag.elements)
+  els.elem = patField
+  els.fieldsMap.set(Tag.push,patField)
+  symInfo(Tag.RestElement).fieldsMap.set(Tag.argument,patField)
+}
 
 function isNode(node) {
   if (node == null)
@@ -413,10 +430,10 @@ export function* resetFieldInfo(s) {
   const stack = []
   for(const i of s) {
     if (i.enter) {
-      let ti = typeInfo(i)
-      const f = stack[stack.length-1]
+      let f = stack[stack.length-1]
       if (f && f.fieldsMap)
-        i.value.fieldInfo = f.fieldsMap.get(i.pos)
+        f = i.value.fieldInfo = f.fieldsMap.get(i.pos)
+      let ti = f && f.ti || typeInfo(i)
       switch(ti.kind) {
       case "array":
         stack.push(i.value.fieldInfo)

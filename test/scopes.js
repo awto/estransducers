@@ -319,10 +319,52 @@ describe("converting const/let to var", function() {
         }
       }))
     })
+    it("should keep names uniq 6", function() {
+      expect(convert(`function a() {
+        const a = {} 
+        {
+          const {a,b:c} = a;
+          console.log(a,c)
+          for(const {a,c:b} of {a,c}) {
+            console.log(a,c,b)
+          }
+        }
+      }`)).to.equal(pretty(`function a() {
+        var a = {};
+        {
+          var { a: _a, b: c } = a;
+          console.log(_a, c);
+          for (var { a: a1, c: b } of { a: _a, c }) {
+            console.log(a1, c, b);
+          }
+        }
+      }`))
+    })
+    it("should keep names uniq 7", function() {
+      expect(convert(`function a() {
+        const a = {} 
+        {
+          const [a,c,...d] = a;
+          console.log(a,c,...d)
+          for(const [a,b,...d] of [a,c,...d]) {
+            console.log(a,c,b,...d)
+          }
+        }
+      }`)).to.equal(pretty(`function a() {
+        var a = {};
+        {
+          var [_a, c, ...d] = a;
+          console.log(_a, c, ...d);
+          for (var [a1, b, ..._d] of [_a, c, ...d]) {
+            console.log(a1, c, b, ..._d);
+          }
+        }
+      }`))
+    })
   })
   context("if every declaration is moved to its scope start", function() {
     const convert = convertImpl(varDeclsEs5)
-    it("should keep names uniq 6", function() {
+    it("should keep names uniq 8", function() {
       expect(convert(`function a() {
       var a = 10;
       {
@@ -350,7 +392,7 @@ describe("converting const/let to var", function() {
         }
       }))
     })
-    it("should keep names uniq 7", function() {
+    it("should keep names uniq 9", function() {
       expect(convert(`function a() {
         const a = {a:1,b:2};
         for(const a in a) {
