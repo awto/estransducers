@@ -1069,3 +1069,53 @@ export const adjustFieldTypeSimple = R.pipe(
   adjustFieldTypeImpl
 )
 
+export function* cons(a, s) {
+  yield a
+  yield* s
+}
+
+/** 
+ * lookahead: returns first element and a stream with same elements
+ *    
+ *   `Iterable<A> -> [A, Iterable<A>]`  
+ */
+export function la(s) {
+  const i = s[Symbol.iterator]()
+  const v = i.next().value
+  return [v, cons(v,i)]
+}
+
+/** 
+ * runs `fn` passing `value.opts` of the stream's first output
+ * if its resulting value is positive applies it to the original
+ * stream or returns it unchanged
+ *
+ *     (Opts -> Toks?) -> Toks -> Toks
+ */ 
+export const select = R.curry(function select(fn,s) {
+  const [h, sn] = la(s)
+  const pass = fn(h.value.opts)
+  return pass ? pass(sn) : sn
+})
+
+/** 
+ * if `pred` returns true on `opts` field of some first element
+ * wraps transforms `s` using `pass` otherwise returns s unchanged
+ *
+ *     (Opts -> boolean) -> (Toks -> Toks) -> (Toks -> Toks)? -> Toks -> Toks
+ */
+export const enableIf = R.curryN(2,function enableIf(pred,t,e,s) {
+  if (s == null) {
+    if (e != null && typeof e !== "function") {
+      s = e
+      e = i => i
+    }
+  }
+  if (e == null)
+    e = i => i
+  const f = function(s) {
+    const [h, sn] = la(s)
+    return pred(h.value.opts) ? t(sn) : e(sn)
+  }
+  return s != null ? f(s) : f
+})
