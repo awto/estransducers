@@ -398,6 +398,7 @@ export function consume(s) {
           if (ti.fields)
             Object.assign(i.value.node,ti.fields)
         }
+        assert.ok(i.value.node.type)
         stack.unshift(i.value.node)
       }
     }

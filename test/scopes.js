@@ -194,9 +194,21 @@ describe("generating new names", function() {
   })
 })
 
+describe.skip("scope diagnostics", function() {
+  const convert = convertImpl(v => v)
+  context("if there are duplicated names", function() {
+    it("should signal a problem", function() {
+      expect(convert(`function a({a,b}) {
+        const {a,c} = a 
+        
+      }`)).to.throw()
+    })
+  })
+})
+
 describe("converting const/let to var", function() {
   context("if just kind is updated", function() {
-    const convert = convertImpl(allToVar /*varDeclsEs5*/)
+    const convert = convertImpl(allToVar)
     it("should keep names uniq 1", function() {
       expect(convert(`function a() {
         var a = 10;
@@ -364,7 +376,7 @@ describe("converting const/let to var", function() {
   })
   context("if every declaration is moved to its scope start", function() {
     const convert = convertImpl(varDeclsEs5)
-    it("should keep names uniq 8", function() {
+    it("should keep names uniq 1", function() {
       expect(convert(`function a() {
       var a = 10;
       {
@@ -392,7 +404,7 @@ describe("converting const/let to var", function() {
         }
       }))
     })
-    it("should keep names uniq 9", function() {
+    it("should keep names uniq 2", function() {
       expect(convert(`function a() {
         const a = {a:1,b:2};
         for(const a in a) {

@@ -195,9 +195,12 @@ function* browserTraceImpl(prefix,s) {
                   : "color:steelblue",
                   "")
     }
-    
-    if (i.enter && !i.leave && console.group != null)
-      console.group(descr)
+    if (i.enter && !i.leave && console.group != null) {
+      if (x === 0 && i.value.collapsed !== false || i.value.collapsed)
+        console.groupCollapsed(descr)
+      else
+        console.group(descr)
+    }
     let n = ""
     const {node} = i.value
     const comments = []
@@ -266,6 +269,14 @@ function traceArgs(impl) {
     if (s == null || s[Symbol.iterator] == null)
       return (s) => impl(prefix,s)
     return impl(prefix,s)
+  }
+}
+
+export function* cleanComments(s) {
+  for(const i of s) {
+    if (i.enter)
+      i.value.comments = []
+    yield i
   }
 }
 

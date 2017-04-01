@@ -133,11 +133,16 @@ function reorderVarDecl(si) {
             yield* id
           }
           break
+        case Tag.AssignmentPattern:
+          const left = [...walk(s.one())]
+          yield* s.one()
+          yield* left
+          break
         case Tag.ForOfStatement:
         case Tag.ForInStatement:
           const j = s.curLev()
           if (j.type === Tag.VariableDeclaration) {
-            const left = [...s.one()]
+            const left = [...walk(s.one())]
             yield* s.one()
             yield* left
           }
@@ -339,12 +344,12 @@ export function calcBlockRefs(si) {
       walk()
       Kit.skip(s.leave())
       value.varRefs = decls.size ? refs : null
-      value._debRefs = refs
-      value._debDecls = decls
       return [...refs].filter(j => !decls.has(j))
     }
-    const varKindDecls = value.varScope
-          && [...value.varScope.values()].map(i => i.sym) || []
+    if (value.varScope) {
+      for(const i of value.varScope.values())
+        rootDecls.add(i.sym)
+    }
     let res
     const params = new Set()
     for(const i of s.sub()) {
@@ -352,16 +357,15 @@ export function calcBlockRefs(si) {
         if (i.type === Tag.Identifier && i.value.decl != null) {
           if (i.value.decl)
             params.add(i.value.sym)
-        } else if (i.pos === Tag.body) {
-          rootDecls.forEach(rootDecls.add,rootDecls)
-          params.forEach(rootDecls.add,rootDecls)
-          res = block(i.value,
-                      i.value._debRootDecls = rootDecls,
-                      i.value._debRootRefs = new Set(varKindDecls))
+        } else if (i.pos === Tag.body || i.pos === Tag.program) {
+          for(const j of params) {
+            rootDecls.add(j)
+          }
+          res = block(i.value,rootDecls,new Set(rootDecls))
         }
       }
     }
-    return res || new Set()
+    return res || []
   }
   scope(s.peel().value,new Set())
   return sa
