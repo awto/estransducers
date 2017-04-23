@@ -35,8 +35,9 @@ function varDeclsEs5(si) {
                 yield* s.sub()
                 yield* lab()
                 decls.push(s.tok(Tag.init,Tag.Null))
-              } else
+              } else {
                 decls.push(j)
+              }
             }
           } else {
             for(const j of s.sub()) {
@@ -83,35 +84,34 @@ const convertImpl = (pass) => R.pipe(
   produce,
   Scope.prepare,
   pass,
+  Scope.prepare,
   Scope.resolve,
   consume,
   i => i.top,
   gen)
 
 describe("generating new names", function() {
-  const convert = (s,genLikesNum,genLikesSimpl = []) => {
+  const convert = (s,genLikesNum) => {
     let genId = 0
-    return convertImpl(R.pipe(
-      function*(si) {
-        const s = Kit.auto(si)
-        let debx = 0
-        for(const i of s) {
-          if (i.pos === Tag.declarations && i.leave) {
-            let prev = null, prevSym = null
-            const names = genLikesNum.map(Scope.newSym)
-            for(const sym of names) {
-              yield s.enter(Tag.push,Tag.VariableDeclarator)
-              yield s.tok(Tag.id,Tag.Identifier,{sym})
-              if (prevSym != null)
-                yield s.tok(Tag.init,Tag.Identifier,{sym:prevSym})
-              yield* s.leave()
-              prevSym = sym
-            }
+    return convertImpl(function*(si) {
+      const s = Kit.auto(si)
+      let debx = 0
+      for(const i of s) {
+        if (i.pos === Tag.declarations && i.leave) {
+          let prev = null, prevSym = null
+          const names = genLikesNum.map(i => Scope.newSym(i))
+          for(const sym of names) {
+            yield s.enter(Tag.push,Tag.VariableDeclarator)
+            yield s.tok(Tag.id,Tag.Identifier,{sym})
+            if (prevSym != null)
+              yield s.tok(Tag.init,Tag.Identifier,{sym:prevSym})
+            yield* s.leave()
+            prevSym = sym
           }
-          yield i
         }
-      },Scope.assignSym
-    ))(s)
+        yield i
+      }
+    })(s)
   }
   it("should generate uniq names 1", function() {
     expect(
@@ -147,12 +147,14 @@ describe("generating new names", function() {
         function c() {
           var d = 10, e = 10;
         }
+        c()
       },["a","b","a",""]))
       .to.equal(pretty(function a() {
         var a = 10, b = 10, _a, _b = _a, a1 = _b, d = a1;
         function c() {
           var d = 10, e = 10, a, b = a, _a = b, c = _a;
         }
+        c()
       }))
   })
   it("should generate uniq names 5", function() {
@@ -194,14 +196,34 @@ describe("generating new names", function() {
   })
 })
 
-describe.skip("scope diagnostics", function() {
+describe("scope diagnostics", function() {
   const convert = convertImpl(v => v)
   context("if there are duplicated names", function() {
-    it("should signal a problem", function() {
-      expect(convert(`function a({a,b}) {
-        const {a,c} = a 
-        
-      }`)).to.throw()
+    it("should signal a problem 1", function() {
+      let err 
+      try {
+        convert(`function a({a,b}) {
+           const {a,c} = b 
+         }`)
+      } catch(e) {
+        err = e
+      }
+      // TODO: expect.to (get rid of qunit-bdd)
+      expect(err.message).to.equal("Identifier a has already been declared")
+      expect(convert(`function a({a,b}) { var {a,c} = b }`))
+        .to.equal(`function a({ a, b }) { var { a: _a, c } = b; }`)
+    })
+    it("should signal a problem 2", function() {
+      let err 
+      try {
+        convert(`function a() {
+           const {a,c} = b 
+           let a = c
+         }`)
+      } catch(e) {
+        err = e
+      }
+      expect(err.message).to.equal("Identifier a has already been declared")
     })
   })
 })
@@ -319,15 +341,15 @@ describe("converting const/let to var", function() {
     it("should keep names uniq 5", function() {
       expect(convert(`function a() {
         const a = [1,2,3];
-        for(const a of a) {
-          let a = a+1
+        for(const b of a) {
+          let a = b+1
           console.log(a)
         }
       }`)).to.equal(pretty(function a() {
         var a = [1,2,3];
-        for (var _a of a) {
-          var a1 = _a+1;
-          console.log(a1);
+        for (var b of a) {
+          var _a = b+1;
+          console.log(_a);
         }
       }))
     })
@@ -335,22 +357,24 @@ describe("converting const/let to var", function() {
       expect(convert(`function a() {
         const a = {} 
         {
-          const {a,b:c} = a;
-          console.log(a,c)
-          for(const {a,c:b} of {a,c}) {
-            console.log(a,c,b)
+          const {a:_a,b} = a;
+          console.log(a,b)
+          for(const {a,c:b} of {_a}) {
+            console.log(_a,a,b)
           }
         }
-      }`)).to.equal(pretty(`function a() {
-        var a = {};
-        {
-          var { a: _a, b: c } = a;
-          console.log(_a, c);
-          for (var { a: a1, c: b } of { a: _a, c }) {
-            console.log(a1, c, b);
+      }`)).to.equal(pretty(
+        `function a() {
+          var a = {};
+          {
+            var { a: _a, b } = a;
+            console.log(a, b);
+            for (var {a: a1,c:_b} of {_a})
+            {
+              console.log(_a, a1, _b);
+            }
           }
-        }
-      }`))
+        }`))
     })
     it("should keep names uniq 7", function() {
       expect(convert(`function a() {
@@ -358,17 +382,17 @@ describe("converting const/let to var", function() {
         {
           const [a,c,...d] = a;
           console.log(a,c,...d)
-          for(const [a,b,...d] of [a,c,...d]) {
-            console.log(a,c,b,...d)
+          for(const [_a,b,...e] of [a,c,...d]) {
+            console.log(a,_a,c,b,...d,...e)
           }
         }
       }`)).to.equal(pretty(`function a() {
         var a = {};
         {
-          var [_a, c, ...d] = a;
-          console.log(_a, c, ...d);
-          for (var [a1, b, ..._d] of [_a, c, ...d]) {
-            console.log(a1, c, b, ..._d);
+          var [a1, c, ...d] = a1;
+          console.log(a1, c, ...d);
+          for (var [_a, b, ...e] of [a1, c, ...d]) {
+            console.log(a1, _a, c, b, ...d, ...e);
           }
         }
       }`))
@@ -407,18 +431,38 @@ describe("converting const/let to var", function() {
     it("should keep names uniq 2", function() {
       expect(convert(`function a() {
         const a = {a:1,b:2};
-        for(const a in a) {
-          let a = a
-          console.log(a)
+        for(const b in a) {
+          let a = b
+          console.log(a,b)
         }
       }`)).to.equal(pretty(function a() {
         var a;
+        var b;
         var _a;
-        var a1;
         a = { a: 1, b: 2 };
-        for (_a in a) {
-          a1 = _a;
-          console.log(a1);
+        for (b in a) {
+          _a = b;
+          console.log(_a,b);
+        }
+      }))
+    })
+    it("should keep names uniq 3", function() {
+      expect(convert(`function a() {
+        const a = 1; 
+        { 
+          const b = function b() {
+            return a || b();
+          }
+          const a = 2;
+          b()
+        }
+      }`)).to.equal(pretty(function a() {
+        var a;
+        var b;
+        var _a;
+        a = 1; {
+          b = function b() { return _a || b(); };
+          _a = 2; b();
         }
       }))
     })
