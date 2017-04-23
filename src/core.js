@@ -1,26 +1,49 @@
 import {VISITOR_KEYS,NODE_FIELDS,ALIAS_KEYS,BUILDER_KEYS} from "babel-types"
 import * as assert from "assert"
 
-const GLOBAL_SYMBOLS = true
+const SYMBOLS_IMPL = "sym"
+
+const GLOBAL_SYMBOLS = SYMBOLS_IMPL === "sym"
+const OBJ_SYMBOLS  = SYMBOLS_IMPL === "obj"
+const STR_SYMBOLS = SYMBOLS_IMPL === "str"
 
 let nameCount = 0
 const symbols = new Map()
 //TODO: fields used only with a single type
-const fieldTypes = new Map()
+// const fieldTypes = new Map()
 
-export function symInfo(sym) {
-  return symbols.get(sym)
-}
+export const symInfo = OBJ_SYMBOLS
+  ? function symInfo(sym) { return sym }
+  : function symInfo(sym) { return symbols.get(sym) }
+
+export const isSymbol
+  = OBJ_SYMBOLS ? function(sym) { return sym && sym.kind != null }
+  : STR_SYMBOLS ? function(sym) { return sym.substr != null }
+  : function (sym) { return typeof sym === "symbol" }
 
 export function typeInfo(i) {
   return symInfo(i.type)
 }
 
-export const symName = GLOBAL_SYMBOLS
-  ? Symbol.keyFor
-  : (s) => symInfo(s).name
+export const symName
+  = OBJ_SYMBOLS ? function symName(s) { return s.name }
+  : STR_SYMBOLS ? function symName(s) { return s }
+  : GLOBAL_SYMBOLS ? Symbol.keyFor
+  : function symName(s) { return symInfo(s).name }
 
-export const newSymbol = GLOBAL_SYMBOLS ? Symbol.for : Symbol
+const symDict = []
+
+export const newSymbol
+  = OBJ_SYMBOLS ? function newSymbol(n) {
+    return symDict[n] || (symDict[n] = {sym:null,
+                                        name:null,
+                                        kind:null,
+                                        x:null,
+                                        prop:null})
+    }
+  : STR_SYMBOLS ? function(v) { return v }
+  : GLOBAL_SYMBOLS ? Symbol.for
+  : Symbol
 
 export function nodeInfo(node) {
   return symInfo(Tag[node.type])
@@ -37,40 +60,62 @@ export function fieldInfo(type,field) {
   return e.fieldsMap.get(field)
 }
 
-export function symbol(name,kind = "ctrl") {
-  assert.ok(name && name.substr)
-  assert.ok(isNaN(name))
-  const res = newSymbol(name)
-  symbols.set(res,{
-    sym:res,
-    name,
-    kind,
-    x:nameCount++,
-    prop: null
-  })
-  return res
-}
-
-function symbolDefFor(name, kind) {
-  assert.ok(name && name.substr)
-  assert.ok(isNaN(name))
-  let sym = Tag[name], def
-  if (sym == null) {
-    Tag[name] = sym = newSymbol(name)
-    def = { sym,name,kind,x:nameCount++, expr: false,
-            block: false,
-            key: false,
-            lval: false, decl: false, func: false }
-    if (kind === "node")
-      def.esType = name
-    symbols.set(sym,def)
-  } else {
-    def = symInfo(sym)
-    assert.ok(def)
-    assert.equal(kind, def.kind, `for ${name}`)
+export const symbol = OBJ_SYMBOLS
+  ? function symbol(name,kind = "ctrl") {
+    const res = {
+      sym:null,
+      name,
+      kind,
+      x:nameCount++,
+      prop: null
+    }
+    res.sym = res
+    return symDict[name] = res
+  } : function symbol(name,kind = "ctrl") {
+    const res = newSymbol(name)
+    symbols.set(res,{
+      sym:res,
+      name,
+      kind,
+      x:nameCount++,
+      prop: null
+    })
+    return res
   }
-  return def
-}
+
+export const symbolDefFor = OBJ_SYMBOLS
+  ? function symbolDefFor(name, kind) {
+    let sym = Tag[name]
+    if (sym == null) {
+      Tag[name] = sym = symDict[name]
+        = { sym,name,kind,x:nameCount++, expr: false,
+            block: false, key: false,
+            lval: false, decl: false, func: false }
+      if (kind === "node")
+        sym.esType = name
+      sym.sym = sym
+    } else {
+      assert.equal(kind, sym.kind, `for ${name}`)
+    }
+    return sym
+  } : function symbolDefFor(name, kind) {
+    let sym = Tag[name], def
+    if (sym == null) {
+      Tag[name] = sym = newSymbol(name)
+      def = { sym,name,kind,x:nameCount++, expr: false,
+              block: false,
+              key: false,
+              lval: false, decl: false, func: false }
+      if (kind === "node")
+        def.esType = name
+      symbols.set(sym,def)
+    } else {
+      def = symInfo(sym)
+      assert.ok(def)
+      assert.equal(kind, def.kind, `for ${name}`)
+    }
+    return def
+  }
 
 export const TypeInfo = {}
 
@@ -432,8 +477,9 @@ export function* resetFieldInfo(s) {
   for(const i of s) {
     if (i.enter) {
       let f = stack[stack.length-1]
-      if (f && f.fieldsMap)
+      if (f && f.fieldsMap) {
         f = i.value.fieldInfo = f.fieldsMap.get(i.pos)
+      }
       let ti = f && f.ti || typeInfo(i)
       switch(ti.kind) {
       case "array":

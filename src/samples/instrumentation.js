@@ -14,7 +14,9 @@ export default R.pipe(
         switch(i.type) {
         case Tag.Identifier:
           //TODO: needs checking if arguments variable not in scope
-          if (fv != null && i.value.node.name === "arguments") {
+          if (fv != null && i.pos !== Tag.key
+              && i.pos !== Tag.property
+              && i.value.node.name === "arguments") {
             fv.hasArgs = true
             Kit.skip(s.copy(i))
             yield s.tok(i.pos,T.Identifier("e$y$arguments"))

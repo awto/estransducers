@@ -138,7 +138,6 @@ export const Output = (Super) => class Output extends Super {
   valCtor (pos,type,value) {
     let node = null
     if (value == null) { 
-      value = {}
       if (type != null && typeof type !== "symbol") {
         if (type.node != null) {
           value = type
@@ -148,8 +147,13 @@ export const Output = (Super) => class Output extends Super {
           node = type
           value = {node}
           type = null
+        } else if (value == null) {
+          value = type
+          type = null
         }
       }
+      if (value == null)
+        value = {}
     } else
       node = value.node
     if (type == null) {
@@ -158,7 +162,7 @@ export const Output = (Super) => class Output extends Super {
       } else if (node != null && node.type != null) {
         type = Tag[node.type]
       } else {
-        if (symInfo(pos) === "ctrl")
+        if (symInfo(pos).kind === "ctrl")
           type = pos
       }
     }
@@ -513,8 +517,8 @@ export function auto(s) {
 
 export class NoInput {}
 export const OutputStream = Template(Output(NoInput))
-export function output(s) {
-  return new OutputStream(s)
+export function output() {
+  return new OutputStream()
 }
 
 export function skip(s) {
