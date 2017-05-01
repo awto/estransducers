@@ -203,10 +203,8 @@ export const assignSym = R.pipe(
             let j = s.peel()
             if (j.pos === Tag.id) {
               const fd = ti.funDecl
-              id(j,nextSyms,fd,true)
+              id(j,fd && rootSyms != null ? rootSyms : nextSyms,fd,true)
               assert.ok(j.value.sym)
-              if (fd && rootSyms != null)
-                rootSyms.unshift(j.value.sym)
               Kit.skip(s.one())
               Kit.skip(s.leave())
               j = s.peel()
@@ -282,7 +280,7 @@ export const assignSym = R.pipe(
           case Tag.Identifier:
             let {sym} = i.value
             if (i.value.decl === true) {
-              if (sym.strict && !sym.funId && !sym.unordered)
+              if (sym.strict && (!sym.unordered || sym.funId))
                 scope.set(sym.name,sym)
             } else if (i.value.decl === false) {
               if (sym == null) {
@@ -376,7 +374,7 @@ function calcBlockRefs(si) {
     for(const i of s.sub()) {
       if (i.enter) {
         if (i.value.blockDecls != null && !i.leave) {
-          const nrefs = new Set([...i.value.blockDecls].filter(i => !i.funId))
+          const nrefs = new Set([...i.value.blockDecls]/*.filter(i => !i.funId)*/)
           walk(nrefs)
           i.value.varRefs = new Set(nrefs)
           for(const j of i.value.blockDecls)

@@ -30,7 +30,8 @@ function varDeclsEs5(si) {
                 let pos = i.pos
                 yield s.enter(Tag.push,Tag.ExpressionStatement)
                 yield s.enter(Tag.expression,Tag.AssignmentExpression,{node:{operator:"="}})
-                yield s.tok(Tag.left,Tag.Identifier,decls[decls.length-1].value) 
+                yield s.tok(Tag.left,Tag.Identifier,
+                            Object.assign({},decls[decls.length-1].value)) 
                 yield s.peel(Kit.setPos(j,Tag.right))
                 yield* s.sub()
                 yield* lab()
