@@ -364,8 +364,12 @@ export function WithPeel(Super) {
       yield* this.leave();
     }
     close(i) {
-      const j = this.take()
-      assert.equal(i.value,j.value)
+      if (!i.leave) {
+        const j = this.take()
+        assert.equal(i.value,j.value)
+        return j
+      }
+      return null
     }
   }
 }
@@ -540,6 +544,44 @@ export function setType(i,type) {
   */
 export function setPos(i,pos) {
   return {enter:i.enter,leave:i.leave,type:i.type,pos,value:i.value}
+}
+
+/** changes position on a first level of Iterable `s` */
+export function* repos(s,pos) {
+  const iter = s[Symbol.iterator]()
+  let i, level = 0
+  while(!(i = iter.next()).done) {
+    const v = i.value
+    if (v.enter)
+      level++
+    yield level === 1 ? setPos(v,pos) : v
+    if (v.leave)
+      level--
+  }
+  return i.value
+}
+
+
+/** probably faster version of `reposOne` if there is only one child */
+export function* reposOne(s,pos) {
+  const iter = s[Symbol.iterator]()
+  let i, p = iter.next()
+  if (p.done)
+    return p.value
+  p = setPos(p.value,pos)
+  for(;!(i = iter.next()).done;p = i.value)
+    yield p
+  yield setPos(p,pos)
+  return i.value
+}
+
+/** 
+ * same as `reposOne` but works only for arrays avoiding traversal
+ */
+export function reposOneArr(arr,pos) {
+  arr[0] = setPos(arr[0],pos)
+  arr[arr.length-1] = setPos(arr[arr.length-1],pos)
+  return arr
 }
 
 export const Subst = symbol("Subst","ctrl")
@@ -1123,3 +1165,113 @@ export const enableIf = R.curryN(2,function enableIf(pred,t,e,s) {
   }
   return s != null ? f(s) : f
 })
+
+export const packed = symbol("packed")
+
+/** packs not interested tokens into `packed` node */
+export const pack = R.curry(function* pack(pred,s) {
+  let buf = []
+  for(const i of s) {
+    if (i.type === packed) {
+      buf.push(...i.value.node)
+    } else if (pred(i)) {
+      if (buf.length) {
+        yield tok(packed,packed,{node:buf})
+        buf = []
+      }
+      yield i
+    } else
+      buf.push(i)
+  }
+  if (buf.length)
+    yield s.tok(packed,{node:buf})
+})
+
+/** unpacks all `packed` nodes */
+export function* unpack(s) {
+  for(const i of s) {
+    if (i.type === packed) {
+      if (i.enter)
+        yield* i.value.node
+    }
+    else
+      yield i
+  }
+}
+
+export const filter = R.curry(function* filter(pred,s) {
+  for(const i of s)
+    if (pred(i))
+      yield i
+})
+
+export const flatMap = R.curry(function* flatMap(act,s) {
+  for(const i of s)
+    yield* act(i)
+})
+
+export const map = R.curry(function* map(fun,s) {
+  for(const i of s)
+    yield fun(i)
+})
+
+export const forEach = R.curry(function forEach(act,s) {
+  for(const i of s)
+    act(i)
+})
+
+/**
+ * reverse array iterator
+ */
+export function reverse(arr) {
+  arr = toArray(arr)
+  let i = arr.length
+  return {
+    [Symbol.iterator]() {
+      return {
+        next() {
+          return i === 0 ? {value:null,done:true} : {value:arr[--i],done:false}
+        }
+      }
+    }
+  }
+}
+
+export function groupWith/*::<K,V,W>*/(i/*:Iterable<[K,V]>*/,
+                                       accum/*:(w:W,v:V,k?:K) => W*/,
+                                       init/*::?: (k?:K) => W*/)
+/*: Map<K,W>*/ {
+  const ret/*:Map<K,W>*/ = new Map()
+  if (init == null)
+    init = () => null
+  for(const [k,v] of i) {
+    const l = ret.get(k)
+    ret.set(k,l == null ? accum(init(k),v,k) : accum(l,v,k))
+  }
+  return ret
+}
+
+export function group/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,V[]>*/ {
+  const ret/*:Map<K,V[]>*/ = new Map()
+  for(const [k,v] of i) {
+    let l = ret.get(k)
+    if (l == null)
+      ret.set(k,l=[])
+    l.push(v)
+  }
+  return ret
+  // return groupWith<K,V,V[]>(i,(w:V[],v:V) => (w.push(v),w), () => [])
+}
+
+export function groupUniq/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,Set<V>>*/ {
+  const ret/*:Map<K,V[]>*/ = new Map()
+  for(const [k,v] of i) {
+    let l = ret.get(k)
+    if (l == null)
+      ret.set(k,l=new Set())
+    l.add(v)
+  }
+  return ret
+  // return groupWith<K,V,V[]>(i,(v:V,w:V[]) => (w.add(v),w), () => new Set())
+}
+
