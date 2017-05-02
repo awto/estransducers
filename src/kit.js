@@ -1,7 +1,7 @@
 import * as R from "ramda"
 import * as assert from "assert"
 import {produce,consume,Tag,enter,resetFieldInfo,
-        leave,tok,symbol,symInfo,typeInfo
+        leave,tok,symbol,symInfo,typeInfo,removeNulls
        } from "./core"
 import * as T from "babel-types"
 import {parse} from "babylon"
@@ -1184,7 +1184,7 @@ export const pack = R.curry(function* pack(pred,s) {
       buf.push(i)
   }
   if (buf.length)
-    yield s.tok(packed,{node:buf})
+    yield tok(packed,packed,{node:buf})
 })
 
 /** unpacks all `packed` nodes */
@@ -1274,4 +1274,81 @@ export function groupUniq/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,Set<V>>*/ {
   return ret
   // return groupWith<K,V,V[]>(i,(v:V,w:V[]) => (w.add(v),w), () => new Set())
 }
+
+/** a postprocess pass for any pass removing some expressions */
+export const cleanEmptyExprs = R.pipe(
+  function markLastSubExpr(si) {
+    const s = auto(si)
+    function* walk() {
+      for(const i of s.sub()) {
+        yield i
+        if (i.type === Tag.SequenceExpression) {
+          const inner = [...walk()]
+          if (inner.length > 2)
+            inner[inner.length - 2].value.last = true
+          yield* inner
+        }
+      }
+    }
+    return walk()
+  },
+  function cleanEmptyExprs(si) {
+    const s = auto(si)
+    function canSkip(inner) {
+      if (!inner.length)
+        return true
+      const t = inner[0]
+      if (t.type === Tag.Null || t.value.canIgnore)
+        return true
+      return false
+    }
+    function* walk(sw,ignore) {
+      for(const i of sw) {
+        if (i.enter) {
+          switch(i.type) {
+          case Tag.SequenceExpression:
+            const j = s.take()
+            const buf = []
+            for(let nxt;(nxt = s.curLev()) != null;) {
+              const inner = [...walk(s.one(),!nxt.value.last || ignore)]
+              if (nxt.value.last && !ignore || !canSkip(inner))
+                buf.push(inner)
+            }
+            switch(buf.length) {
+            case 1:
+              yield* reposOneArr(buf[0],i.pos)
+            case 0:
+              s.close(j)
+              s.close(i)
+              break
+            default:
+              yield i
+              yield j
+              for(const k of buf)
+                yield* k
+              yield s.close(j)
+              yield s.close(i)
+            }
+            continue
+          case Tag.ExpressionStatement:
+            const inner = [...walk(s.one(),true)]
+            if (canSkip(inner)) {
+              if (i.pos !== Tag.push)
+                yield s.tok(i.pos,Tag.Null)
+              s.close(i)
+            } else {
+              yield i
+              yield* inner
+              yield s.close(i)
+            }
+            continue
+          }
+          ignore = false
+        }
+        yield i
+      }
+    }
+    return walk(s)
+  },
+  removeNulls)
 

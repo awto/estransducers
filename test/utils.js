@@ -26,7 +26,7 @@ describe("pack", function() {
           let k = i + j
           console.log(k) 
         }`
-    const s = Kit.auto(produce(parse(prog)))
+    const s = produce(parse(prog))
     const packed = [...Kit.pack(i => i.type === Tag.BlockStatement,s)]
     let numBlocks = 0
     let numPacks = 0
@@ -68,3 +68,29 @@ describe("iterator utils", function() {
   })
 })
 
+describe("empty expressions cleaner", function() {
+  it("should remove any useless identifier only expressions", function() {
+    const prog = `
+        function a() {
+          console.log((i,j),(i,k=10,(i,j)));
+          i, j = 10, k, m;
+          i;
+          i, j, k;
+          return i, j, k; 
+        }`
+    function* ignoreIds(s) {
+      for(const i of s) {
+        if (i.enter && i.type === Tag.Identifier)
+          i.value.canIgnore = true
+        yield i
+      }
+    }
+    const res = toStr(Kit.cleanEmptyExprs(ignoreIds(produce(parse(prog)))))
+    expect(res).to.equal(pretty(`
+      function a() {
+        console.log(j,(k=10,j));
+        j=10;
+        return k;
+      }`))
+  })
+})
