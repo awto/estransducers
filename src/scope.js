@@ -50,6 +50,7 @@ export const resetSym = R.pipe(
             }
             break
           case Tag.BlockStatement:
+          case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.Program:
@@ -302,6 +303,7 @@ export const assignSym = R.pipe(
             }
             break
           case Tag.BlockStatement:
+          case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.Program:
@@ -396,6 +398,8 @@ function calcBlockRefs(si) {
 const nameOpts = ["a","b","c","d","e","f","g","h","k","m","n","x","y","z"]
 
 function namePos(n,pos) {
+  if (n[n.length-1] === "_")
+    return n + (pos+1)
   if (pos === 0)
     return n
   if (pos === 1)
