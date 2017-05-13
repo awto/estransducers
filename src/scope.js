@@ -13,8 +13,8 @@ symInfo(Tag.ClassDeclaration).funDecl = true
 symInfo(Tag.FunctionDeclaration).funDecl = true
 
 // String -> Sym
-export function newSym(name = "", strict = false) {
-  return { name, orig: name, id: `${name}@${curSymId++}`, strict }
+export function newSym(name = "", strict = false, decl) {
+  return { name, orig: name, id: `${name}@${curSymId++}`, strict, decl }
 }
 
 /**
@@ -110,12 +110,13 @@ function reorderVarDecl(si) {
  * sym object to a SymbolInfo structure
  * 
  *     interface Sym {
- *       name: String,
- *       orig: String,
- *       num: number,
- *       sym: Symbol,
- *       unordered: boolean,
- *       declScope: TokenValue
+ *       name: String;
+ *       orig: String;
+ *       num: number;
+ *       sym: Symbol;
+ *       unordered: boolean;
+ *       declScope: TokenValue;
+ *       decl?: TokenValue;
  *     }
  * 
  * for each identifier referening variable:
@@ -125,7 +126,7 @@ function reorderVarDecl(si) {
  *                        & {root?:boolean}
  * 
  */
-export const assignSym = R.pipe(
+export const assignSym = (report) => R.pipe(
   resetFieldInfo,
   // collecting each declaration in each block before resolving
   // because function's may use the ones declared after
@@ -134,19 +135,22 @@ export const assignSym = R.pipe(
     const s = Kit.auto(sa)
     function walk(root,block,rootSyms,blockSyms) {
       function checkScope(val,syms) {
-        const m = new Map()
-        for(const i of syms) {
-          if (!i.strict || i.funId || i.unordered || i.declScope == null)
-            continue
-          let l = m.get(i.orig)
-          if (l == null)
-            m.set(i.orig,l = [])
-          l.push(i)
-        }
-        for(const i of m.values()) {
-          if (i.length > 1) {
-            throw s.error(`Identifier ${i[0].orig} has already been declared`,
-                          i[i.length-1])
+        // checking the scope only the first time
+        if (report) {
+          const m = new Map()
+          for(const i of syms) {
+            if (!i.strict || i.funId || i.unordered || i.declScope == null)
+              continue
+            let l = m.get(i.orig)
+            if (l == null)
+              m.set(i.orig,l = [])
+            l.push(i)
+          }
+          for(const i of m.values()) {
+            if (i.length > 1) {
+              throw s.error(`Identifier ${i[0].orig} has already been declared`,
+                            i[i.length-1].decl)
+            }
           }
         }
         val.blockDecls = new Set(syms)
@@ -158,7 +162,7 @@ export const assignSym = R.pipe(
           let {node:{name},sym} = i.value
           if (sym != null)
             name = sym.orig
-          sym = sym || (i.value.sym = newSym(name,true))
+          sym = sym || (i.value.sym = newSym(name,true,i.value))
           syms.push(sym)
           if (name != null && name.length && unordered && root != null)
             root.varScope.set(name,sym)
@@ -202,12 +206,14 @@ export const assignSym = R.pipe(
             const nextSyms = []
             const ti = symInfo(i.type)
             let j = s.peel()
+            let rootId
             if (j.pos === Tag.id) {
               const fd = ti.funDecl
               id(j,fd && rootSyms != null ? rootSyms : nextSyms,fd,true)
               assert.ok(j.value.sym)
               Kit.skip(s.one())
               Kit.skip(s.leave())
+              rootId = j.value.sym
               j = s.peel()
             }
             if (j.pos === Tag.params) {
@@ -221,6 +227,7 @@ export const assignSym = R.pipe(
             assert.ok(j.pos === Tag.body || j.pos === Tag.program)
             j.value.root = true
             walk(i.value,j.value,nextSyms,nextSyms)
+            j.value.rootId = rootId
             checkScope(j.value,nextSyms)
             Kit.skip(s.leave())
             break
@@ -290,7 +297,7 @@ export const assignSym = R.pipe(
                 if (sym == null) {
                   let undef = globals.get(name)
                   if (undef == null) {
-                    globals.set(name,undef = newSym(name,true))
+                    globals.set(name,undef = newSym(name,true,i.value))
                     undef.num = -1
                     undef.unordered = false
                     undef.declScope = null
@@ -376,7 +383,9 @@ function calcBlockRefs(si) {
     for(const i of s.sub()) {
       if (i.enter) {
         if (i.value.blockDecls != null && !i.leave) {
-          const nrefs = new Set([...i.value.blockDecls]/*.filter(i => !i.funId)*/)
+          const nrefs = new Set(i.value.blockDecls)
+          if (i.value.rootId)
+            nrefs.delete(i.value.rootId)
           walk(nrefs)
           i.value.varRefs = new Set(nrefs)
           for(const j of i.value.blockDecls)
@@ -514,13 +523,10 @@ function solve(si) {
   return sa
 }
 
-export const prepare = R.pipe(
-//  calcUnorderedScope,
-  assignSym)
+export const prepare = assignSym(true)
 
 export const resolve = R.pipe(
-  //  resetSym,
-  assignSym,
+  assignSym(false),
   calcBlockRefs,
   solve)
 

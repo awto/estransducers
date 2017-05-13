@@ -114,7 +114,7 @@ describe("generating new names", function() {
       }
     })(s)
   }
-  it("should generate uniq names 1", function() {
+  it("all new variable should have valid name 1", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
@@ -123,7 +123,7 @@ describe("generating new names", function() {
       var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d;
     }))
   })
-  it("should generate uniq names 2", function() {
+  it("all new variable should have valid name 2", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
@@ -132,7 +132,7 @@ describe("generating new names", function() {
         var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d, a2 = a1;
       }))
   })
-  it("should generate uniq names 3", function() {
+  it("all new variable should have valid name 3", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
@@ -141,7 +141,7 @@ describe("generating new names", function() {
         var a = 10, b = 10, _a, _b = _a, a1 = _b, c = a1;
       }))
   })
-  it("should generate uniq names 4", function() {
+  it("all new variable should have valid name 4", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10;
@@ -158,7 +158,7 @@ describe("generating new names", function() {
         c()
       }))
   })
-  it("should generate uniq names 5", function() {
+  it("all new variable should have valid name 5", function() {
     expect(
       convert(function a() {
         var a = 10, b = 10,c,d,e,f,g,h,k,m,n,x,y,z;
@@ -168,7 +168,7 @@ describe("generating new names", function() {
             k, m, n, x, y, z, _a,
             _b = _a, a1 = _b, a2 = a1; }))
   })
-  it("should generate uniq names 6", function() {
+  it("all new variable should have valid name 6", function() {
     expect(
       convert(`function f() {
         let a = 10, b = 10;
