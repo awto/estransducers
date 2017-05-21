@@ -4,8 +4,6 @@ import {Tag,TypeInfo as TI,symbol,tok,resetFieldInfo,symInfo} from "./core"
 import * as assert from "assert"
 import * as Trace from "./trace"
 
-const globals = new Map()
-
 let symNum = 0
 let curSymId = 0
 
@@ -14,7 +12,27 @@ symInfo(Tag.FunctionDeclaration).funDecl = true
 
 // String -> Sym
 export function newSym(name = "", strict = false, decl) {
-  return { name, orig: name, id: `${name}@${curSymId++}`, strict, decl }
+  return { name, orig: name, id: `${name}_${curSymId++}`, strict, decl }
+}
+
+export const undefinedSym = newSym("undefined", true)
+
+const globals = new Map([["undefined",undefinedSym]])
+
+/**
+ * sets temporal `node.name` for each Identifier for debug dumps outputs
+ */
+export function* tempNames(s) {
+  for(const i of s) {
+    if (i.enter && i.type === Tag.Identifier
+        && i.value.sym != null
+        && i.value.node.name == null) {
+      i.value.node.name = i.value.sym.strict
+        ? i.value.sym.name
+        : i.value.sym.id 
+    }
+    yield i
+  }
 }
 
 /**
@@ -504,7 +522,7 @@ function solve(si) {
         if (i.dom.has(pos))
           continue
         nn = namePos(n,pos)
-        if (pos > 0 && names.has(nn))
+        if (nn !== n && names.has(nn))
           continue
         break
       }
@@ -526,6 +544,7 @@ function solve(si) {
 export const prepare = assignSym(true)
 
 export const resolve = R.pipe(
+  resetSym,
   assignSym(false),
   calcBlockRefs,
   solve)

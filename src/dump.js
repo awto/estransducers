@@ -1,5 +1,6 @@
 import * as R from "ramda"
 import * as Kit from "./kit"
+import {tempNames} from "./scope"
 import * as Trace from "./trace"
 import {Tag,produce,symName,consume,symInfo,
         resetFieldInfo,typeInfo,removeNulls} from "./core"
@@ -150,17 +151,17 @@ export const toConsole = R.curry(function toConsole(tag,s) {
 
 export const fin = R.pipe(
   removeNulls,
+  tempNames,
   convertCtrl,
   Array.from,
   applyComments,
   Array.from)
 
 export function toStr(s) {
-  consume(fin(s))
-  return generate(fin[0].value.node).code
+  return generate(consume(fin(Kit.repos(s,Tag.top))).top).code
 }
 
-export default R.curry(function dump(tag,s) {
+export const output = R.curry(function dump(tag,s) {
   const sa = Kit.toArray(s)
   const sl = Kit.auto(Kit.clone(sa))
   const opts = sl.opts || {}
@@ -191,6 +192,8 @@ export default R.curry(function dump(tag,s) {
   }
   return sa
 })
+
+export default output
 
 export function setComment(i, txt, style = "none") {
   style = style.substr && styles[style] || style;
@@ -230,6 +233,7 @@ export function* cleanComments(s) {
 
 const styles = {
   large: "font-size:xx-large;color:orange",
+  hl: "font-size:large;color:navy;",
   small: "font-size:large;color:navy;",
   nodetype: "font-size:xx-small;color:green;font-weight:bolder",
   none: ""

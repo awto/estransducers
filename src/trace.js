@@ -110,7 +110,6 @@ const traceImpl = BROWSER_DEBUG ? browserTraceImpl : traceNodeImpl
 function* traceNodeImpl(prefix, s) {
   let level = 0
   let x = 0
-//  prefix = chalk.bold(prefix)
   for(const i of s) {
     if (i.enter)
       level++
