@@ -12,7 +12,12 @@ symInfo(Tag.FunctionDeclaration).funDecl = true
 
 // String -> Sym
 export function newSym(name = "", strict = false, decl) {
-  return { name, orig: name, id: `${name}_${curSymId++}`, strict, decl }
+  return { name,
+           orig: name,
+           id: `${name}_${curSymId++}`,
+           strict,
+           decl,
+           num: symNum++}
 }
 
 export const undefinedSym = newSym("undefined", true)
@@ -57,8 +62,8 @@ export const resetSym = R.pipe(
                 const fi = i.value.fieldInfo
                 i.value.decl = fi.declVar
               }
-              if (sym.num == null)
-                sym.num = symNum++
+              //if (sym.num == null)
+              //  sym.num = symNum++
               if (sym.orig != null)
                 sym.name = sym.orig
               if (i.value.node.name == null)
@@ -184,8 +189,8 @@ export const assignSym = (report) => R.pipe(
           syms.push(sym)
           if (name != null && name.length && unordered && root != null)
             root.varScope.set(name,sym)
-          if (sym.num == null)
-            sym.num = symNum++
+          //if (sym.num == null)
+          //  sym.num = symNum++
           sym.funId = funId
           sym.unordered = unordered
           sym.declScope = root

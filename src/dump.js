@@ -137,6 +137,7 @@ export const toConsole = R.curry(function toConsole(tag,s) {
     console.log(`dump ${tag}`)
   const col = R.pipe(convertCtrl,
                      color,
+                     tempNames,
                      Array.from,
                      applyComments,
                      Array.from
