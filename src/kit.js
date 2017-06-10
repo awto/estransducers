@@ -363,6 +363,13 @@ export function WithPeel(Super) {
       yield* this.sub();
       yield* this.leave();
     }
+    *tillClose(i) {
+      for(const j of this) {
+        yield j
+        if (j.value == i.value)
+          return j
+      }
+    }
     close(i) {
       if (!i.leave) {
         const j = this.take()

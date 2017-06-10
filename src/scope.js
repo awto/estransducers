@@ -21,6 +21,7 @@ export function newSym(name = "", strict = false, decl) {
 }
 
 export const undefinedSym = newSym("undefined", true)
+export const argumentsSym = newSym("arguments", true)
 
 const globals = new Map([["undefined",undefinedSym]])
 
