@@ -524,3 +524,9 @@ export function* removeNulls(s) {
       stack.shift()
   }
 }
+
+export function isSynthetic(node) {
+  return !node || node.loc == null;
+}
+
+

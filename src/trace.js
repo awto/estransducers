@@ -271,10 +271,17 @@ function traceArgs(impl) {
   }
 }
 
+
 export function* cleanComments(s) {
   for(const i of s) {
-    if (i.enter)
-      i.value.comments = []
+    if (i.enter) {
+      i.value.comments = null
+      i.value.tcomments = null
+      if (i.value.node) {
+        i.value.node.leadingComments = null
+        i.value.node.trailingComments = null
+      }
+    }
     yield i
   }
 }

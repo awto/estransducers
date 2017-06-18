@@ -68,7 +68,7 @@ export const resetSym = R.pipe(
                 sym.name = sym.orig
               if (i.value.node.name == null)
                 i.value.node.name = sym.name
-              if (i.value.decl)
+              if (i.value.decl && blockScope != null)
                 blockScope.add(sym)
             }
             break
@@ -223,7 +223,7 @@ export const assignSym = (report) => R.pipe(
           case Tag.ClassDeclaration:
           case Tag.ClassExpression:
           case Tag.ClassMethod:
-            if (i.leave)
+            if (i.leave || s.curLev() == null)
               break
             i.value.varScope = new Map()
             const nextSyms = []

@@ -216,22 +216,6 @@ export function copyComment(f,t) {
   return t
 }
 
-export function* cleanComments(s) {
-  for(const i of s) {
-    yield i
-    if (i.leave) {
-      i.value.comments = null
-      i.value.tcomments = null
-      if (i.value.node) {
-        if (i.value.leadingComments)
-          i.value.leadingComments = null
-        if (i.value.trailingComments)
-          i.value.trailingComments = null
-      }
-    }
-  }
-}
-
 const styles = {
   large: "font-size:xx-large;color:orange",
   hl: "font-size:large;color:navy;",
