@@ -1,3 +1,4 @@
+
 # estree-transducers
 
 Transducers as alternative to visitors for ESTree AST traversal.
@@ -65,7 +66,7 @@ Unless some of the transducers intentionally buffer input values, nothing is sto
 in memory.
 
 There is a paper about transducers transforming producers (like in this library):
-(Lazy v. Yield: Incremental, Linear Pretty-printing)[http://okmij.org/ftp/continuations/PPYield/yield-pp.pdf]
+[Lazy v. Yield: Incremental, Linear Pretty-printing](http://okmij.org/ftp/continuations/PPYield/yield-pp.pdf)
 from 2012 (the first mention of clojure transducers (transforming consumers) is
 probably this 2014 [blog post](http://blog.cognitect.com/blog/2014/8/6/transducers-are-coming).
 In the paper transducers are used to ensure linear complexity for pretty-printing
