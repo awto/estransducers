@@ -79,7 +79,7 @@ export const resetSym = R.pipe(
           case Tag.ForInStatement:
           case Tag.Program:
           case Tag.ForOfStatement:
-            walk(i.value.blockDecls = new Set())
+            walk(i.value.decls = new Set())
             break
           }
         }
@@ -146,7 +146,7 @@ function reorderVarDecl(si) {
  * for each identifier referening variable:
  *
  *     type Value = Value & {sym:Sym,decl?:true} 
- *                        & {blockDecls?:Map<string,Sym>}
+ *                        & {decls?:Map<string,Sym>}
  *                        & {root?:boolean}
  * 
  */
@@ -157,7 +157,7 @@ export const assignSym = (report) => R.pipe(
   function collectDecls(si) {
     const sa = Kit.toArray(si)
     const s = Kit.auto(sa)
-    function walk(root,block,rootSyms,blockSyms) {
+    function walk(func,block,funcSyms,blockSyms) {
       function checkScope(val,syms) {
         // checking the scope only the first time
         if (report) {
@@ -177,7 +177,7 @@ export const assignSym = (report) => R.pipe(
             }
           }
         }
-        val.blockDecls = new Set(syms)
+        val.decls = new Set(syms)
       }
       function id(i,syms,unordered,funId) {
         const fi = i.value.fieldInfo
@@ -188,13 +188,9 @@ export const assignSym = (report) => R.pipe(
             name = sym.orig
           sym = sym || (i.value.sym = newSym(name,true,i.value))
           syms.push(sym)
-          if (name != null && name.length && unordered && root != null)
-            root.varScope.set(name,sym)
-          //if (sym.num == null)
-          //  sym.num = symNum++
           sym.funId = funId
           sym.unordered = unordered
-          sym.declScope = root
+          sym.declScope = func
           sym.declBlock = block
           return sym
         } else if (fi.expr || fi.lval) {
@@ -212,7 +208,7 @@ export const assignSym = (report) => R.pipe(
           case Tag.Program:
             {
               const nextSyms = []
-              walk(root,i.value,rootSyms,nextSyms)
+              walk(func,i.value,funcSyms,nextSyms)
               checkScope(i.value,nextSyms)
             }
             break
@@ -226,18 +222,21 @@ export const assignSym = (report) => R.pipe(
           case Tag.ClassMethod:
             if (i.leave || s.curLev() == null)
               break
-            i.value.varScope = new Map()
             const nextSyms = []
             const ti = symInfo(i.type)
             let j = s.peel()
-            let rootId
+            let funcId
             if (j.pos === Tag.id) {
               const fd = ti.funDecl
-              id(j,fd && rootSyms != null ? rootSyms : nextSyms,fd,true)
+              id(j,
+                 fd && funcSyms != null
+                   ? s.opts.unsafe ? funcSyms : blockSyms
+                   : nextSyms,
+                 fd, true)
               assert.ok(j.value.sym)
               Kit.skip(s.one())
               Kit.skip(s.leave())
-              rootId = j.value.sym
+              funcId = j.value.sym
               j = s.peel()
             }
             if (j.pos === Tag.params) {
@@ -251,13 +250,13 @@ export const assignSym = (report) => R.pipe(
             assert.ok(j.pos === Tag.body || j.pos === Tag.program)
             j.value.root = true
             walk(i.value,j.value,nextSyms,nextSyms)
-            j.value.rootId = rootId
+            j.value.funcId = funcId
             checkScope(j.value,nextSyms)
             Kit.skip(s.leave())
             break
           case Tag.VariableDeclaration:
             const unordered = i.value.node.kind === "var"
-            const dstSyms = unordered ? rootSyms : blockSyms
+            const dstSyms = unordered ? funcSyms : blockSyms
             for(const j of s.sub()) {
               if (j.enter && !j.leave && j.type === Tag.VariableDeclarator) {
                 const k = s.curLev()
@@ -267,7 +266,7 @@ export const assignSym = (report) => R.pipe(
                       id(l,dstSyms,unordered,false)
                   }
                 }
-                walk(root,block,rootSyms,blockSyms)
+                walk(func,block,funcSyms,blockSyms)
               }
             }
             break
@@ -279,7 +278,7 @@ export const assignSym = (report) => R.pipe(
                   id(j,nextSyms)
                 }
               }
-              walk(root,i.value,rootSyms,nextSyms)
+              walk(func,i.value,funcSyms,nextSyms)
               checkScope(i.value,nextSyms)
             }
             break
@@ -299,10 +298,6 @@ export const assignSym = (report) => R.pipe(
   },
   function assignSym(si) {
     const sa = Kit.toArray(si)
-    // unfortunately this is not right in JS
-    // could be possible something like:
-    //    for(const a in a) {}
-    // const s = Kit.auto(reorderVarDecl(sa))
     const s = Kit.auto(sa)
     const root = s.first.value
     function decls(scope,par) {
@@ -340,7 +335,7 @@ export const assignSym = (report) => R.pipe(
           case Tag.Program:
           case Tag.ForOfStatement:
             const npar = new Map(par)
-            for(const sym of i.value.blockDecls) {
+            for(const sym of i.value.decls) {
               if (sym.strict) {
                 npar.set(sym.name,sym)
                 if (sym.unordered)
@@ -406,13 +401,13 @@ function calcBlockRefs(si) {
   function walk(refs) {
     for(const i of s.sub()) {
       if (i.enter) {
-        if (i.value.blockDecls != null && !i.leave) {
-          const nrefs = new Set(i.value.blockDecls)
+        if (i.value.decls != null && !i.leave) {
+          const nrefs = new Set(i.value.decls)
           if (i.value.rootId)
             nrefs.delete(i.value.rootId)
           walk(nrefs)
           i.value.varRefs = new Set(nrefs)
-          for(const j of i.value.blockDecls)
+          for(const j of i.value.decls)
             nrefs.delete(j)
           nrefs.forEach(refs.add,refs)
         }
