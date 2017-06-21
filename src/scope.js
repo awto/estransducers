@@ -157,7 +157,7 @@ export const assignSym = (report) => R.pipe(
   function collectDecls(si) {
     const sa = Kit.toArray(si)
     const s = Kit.auto(sa)
-    function walk(func,block,funcSyms,blockSyms) {
+    function walk(func,block,funcSyms,blockSyms,loop) {
       function checkScope(val,syms) {
         // checking the scope only the first time
         if (report) {
@@ -192,6 +192,7 @@ export const assignSym = (report) => R.pipe(
           sym.unordered = unordered
           sym.declScope = func
           sym.declBlock = block
+          sym.declLoop = loop
           return sym
         } else if (fi.expr || fi.lval) {
           i.value.decl = false
@@ -201,14 +202,15 @@ export const assignSym = (report) => R.pipe(
       for(const i of s.sub()) {
         if (i.enter) {
           switch(i.type) {
-          case Tag.BlockStatement:
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.ForOfStatement:
+            const loop = i.value
+          case Tag.BlockStatement:
           case Tag.Program:
             {
               const nextSyms = []
-              walk(func,i.value,funcSyms,nextSyms)
+              walk(func,i.value,funcSyms,nextSyms, loop)
               checkScope(i.value,nextSyms)
             }
             break
