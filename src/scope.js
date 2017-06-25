@@ -241,10 +241,11 @@ export const assignSym = (report) => R.pipe(
               funcId = j.value.sym
               j = s.peel()
             }
+            const params = []
             if (j.pos === Tag.params) {
               for(const k of s.sub()) {
                 if (k.enter && k.type === Tag.Identifier)
-                  id(k,nextSyms,false,false)
+                  params.push(id(k,nextSyms,false,false))
               }
               Kit.skip(s.leave())
               j = s.peel()
@@ -252,7 +253,15 @@ export const assignSym = (report) => R.pipe(
             assert.ok(j.pos === Tag.body || j.pos === Tag.program)
             j.value.root = true
             walk(i.value,j.value,nextSyms,nextSyms)
-            j.value.funcId = funcId
+            for(const k of params) {
+              k.declScope = i.value
+              k.declBlock = j.value
+            }
+            if (funcId && !ti.funDecl) {
+              funcId.declScope = i.value
+              funcId.declBlock = j.value
+            }
+            i.value.funcId = funcId
             checkScope(j.value,nextSyms)
             Kit.skip(s.leave())
             break
@@ -378,9 +387,16 @@ export function calcRefScopes(si) {
   function scope(root) {
     for(const i of s.sub()) {
       if (i.enter) {
-        if (i.value.func) {
+        switch(i.type) {
+        case Tag.FunctionDeclaration:
+          Kit.skip(s.one())
+        case Tag.FunctionExpression:
+        case Tag.ObjectMethod:
+        case Tag.ClassMethod:
+        case Tag.ArrowFunctionExpression:
           scope(i.value)
-        } else if (i.type === Tag.Identifier) {
+          break
+        case Tag.Identifier:
           const si = i.value.sym
           if (si != null && si.declScope !== root)
             (si.refScopes || (si.refScopes = new Set())).add(root)

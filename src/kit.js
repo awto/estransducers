@@ -373,7 +373,7 @@ export function WithPeel(Super) {
     close(i) {
       if (!i.leave) {
         const j = this.take()
-        assert.equal(i.value,j.value)
+        assert.ok(i.value === j.value)
         return j
       }
       return null
@@ -1244,6 +1244,28 @@ export function reverse(arr) {
   }
 }
 
+/** 
+ * adds value `v` to an Array in a map `m` value by `k`
+ * creates the Array if needed 
+ */
+export function mapPush(m, k, v) {
+  let l = m.get(k)
+  if (l == null)
+    m.set(k, l = [])
+  l.push(v)
+}
+
+/** 
+ * adds value `v` to a Set in a map `m` value by `k`
+ * creates the Set if needed 
+ */
+export function mapAdd(m, k, v) {
+  let l = m.get(k)
+  if (l == null)
+    m.set(k, l = new Set)
+  l.add(v)
+}
+
 export function groupWith/*::<K,V,W>*/(i/*:Iterable<[K,V]>*/,
                                        accum/*:(w:W,v:V,k?:K) => W*/,
                                        init/*::?: (k?:K) => W*/)
@@ -1260,24 +1282,16 @@ export function groupWith/*::<K,V,W>*/(i/*:Iterable<[K,V]>*/,
 
 export function group/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,V[]>*/ {
   const ret/*:Map<K,V[]>*/ = new Map()
-  for(const [k,v] of i) {
-    let l = ret.get(k)
-    if (l == null)
-      ret.set(k,l=[])
-    l.push(v)
-  }
+  for(const [k,v] of i)
+    mapPush(ret, k, v)
   return ret
   // return groupWith<K,V,V[]>(i,(w:V[],v:V) => (w.push(v),w), () => [])
 }
 
 export function groupUniq/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,Set<V>>*/ {
   const ret/*:Map<K,V[]>*/ = new Map()
-  for(const [k,v] of i) {
-    let l = ret.get(k)
-    if (l == null)
-      ret.set(k,l=new Set())
-    l.add(v)
-  }
+  for(const [k,v] of i)
+    mapAdd(ret, k, v)
   return ret
   // return groupWith<K,V,V[]>(i,(v:V,w:V[]) => (w.add(v),w), () => new Set())
 }
