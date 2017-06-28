@@ -244,8 +244,11 @@ export const assignSym = (report) => R.pipe(
             const params = []
             if (j.pos === Tag.params) {
               for(const k of s.sub()) {
-                if (k.enter && k.type === Tag.Identifier)
-                  params.push(id(k,nextSyms,false,false))
+                if (k.enter && k.type === Tag.Identifier) {
+                  const sym = id(k,nextSyms,false,false)
+                  if (sym)
+                    params.push(sym)
+                }
               }
               Kit.skip(s.leave())
               j = s.peel()

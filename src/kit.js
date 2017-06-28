@@ -173,11 +173,10 @@ export const Output = (Super) => class Output extends Super {
     }
     if (!value.opts)
       value.opts = this.opts
-//    value.typeInfo = symInfo(type)
     return [pos,type,value]
   }
-  *toks(pos,node) {
-    yield* toks(pos,node)
+  *toks(pos,node,...syms) {
+    yield* toks(pos,node,...syms)
   }
   enter(pos,type,value) {
     [pos,type,value] = this.valCtor(pos,type,value)
@@ -383,7 +382,7 @@ export function WithPeel(Super) {
 
 const memo = new Map()
 
-export function* toks(pos,s) {
+export function* toks(pos,s,...syms) {
   if (Array.isArray(s))
     yield* clone(s)
   if (s.substr != null) {
@@ -429,12 +428,25 @@ export function* toks(pos,s) {
     }
     s = r
   }
+  function* replace(s) {
+    if (!syms.length) {
+      yield* s
+      return
+    }
+    for(const i of s) {
+      if (i.enter && i.type === Tag.Identifier && i.value.node.name === "$S") {
+        assert.ok(syms.length > 0)
+        i.value.sym = syms.shift()
+      }
+      yield i
+    }
+    assert.equal(syms.length, 0)
+  }
   if (Array.isArray(s)) {
     for(const i of s)
-      yield* clone(produce(i,pos))
-    
+      yield* replace(clone(produce(i,pos)))
   } else
-    yield* clone(produce(s,pos))
+    yield* replace(clone(produce(s,pos)))
 }
 
 export function Template(Super) {
