@@ -434,9 +434,24 @@ export function* toks(pos,s,...syms) {
       return
     }
     for(const i of s) {
-      if (i.enter && i.type === Tag.Identifier && i.value.node.name === "$S") {
-        assert.ok(syms.length > 0)
-        i.value.sym = syms.shift()
+      if (i.enter && i.type === Tag.Identifier
+          && i.value.node.name[0] === "$") {
+        switch(i.value.node[1]) {
+        case "$":
+          i.value.node.name = i.value.node.substr(1)
+          break
+        case "S":
+          assert.ok(syms.length > 0)
+          i.value.sym = syms.shift()
+          break
+        default:
+          const sub = i.value.node.substr(1)
+          if (!isNaN(sub)) {
+            const x = +sub
+            assert.ok(syms.length > x)
+            i.value.sym = syms[x]
+          }
+        }
       }
       yield i
     }
