@@ -140,7 +140,10 @@ function reorderVarDecl(si) {
  *       sym: Symbol;
  *       unordered: boolean;
  *       declScope: TokenValue;
+ *       declLoop?: TokenValue;
+ *       declBlock?: TokenValue;
  *       decl?: TokenValue;
+ *       param?: TokenValue;
  *     }
  * 
  * for each identifier referening variable:
@@ -163,7 +166,7 @@ export const assignSym = (report) => R.pipe(
         if (report) {
           const m = new Map()
           for(const i of syms) {
-            if (!i.strict || i.funId || i.unordered || i.declScope == null)
+            if (!i.strict || i.func || i.unordered || i.declScope == null)
               continue
             let l = m.get(i.orig)
             if (l == null)
@@ -179,7 +182,7 @@ export const assignSym = (report) => R.pipe(
         }
         val.decls = new Set(syms)
       }
-      function id(i,syms,unordered,funId) {
+      function id(i,syms,unordered,loop) {
         const fi = i.value.fieldInfo
         if (fi.declVar) {
           i.value.decl = true
@@ -188,11 +191,13 @@ export const assignSym = (report) => R.pipe(
             name = sym.orig
           sym = sym || (i.value.sym = newSym(name,true,i.value))
           syms.push(sym)
-          sym.funId = funId
           sym.unordered = unordered
           sym.declScope = func
           sym.declBlock = block
           sym.declLoop = loop
+          sym.param = null
+          sym.func = null
+          sym.decl = i
           return sym
         } else if (fi.expr || fi.lval) {
           i.value.decl = false
@@ -205,12 +210,17 @@ export const assignSym = (report) => R.pipe(
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.ForOfStatement:
-            const loop = i.value
+            {
+              const nextSyms = []
+              walk(func,i.value,funcSyms,nextSyms,i.value)
+              checkScope(i.value,nextSyms)
+            }
+            break
           case Tag.BlockStatement:
           case Tag.Program:
             {
               const nextSyms = []
-              walk(func,i.value,funcSyms,nextSyms, loop)
+              walk(func,i.value,funcSyms,nextSyms,loop)
               checkScope(i.value,nextSyms)
             }
             break
@@ -234,7 +244,7 @@ export const assignSym = (report) => R.pipe(
                  fd && funcSyms != null
                    ? s.opts.unsafe ? funcSyms : blockSyms
                    : nextSyms,
-                 fd, true)
+                 fd)
               assert.ok(j.value.sym)
               Kit.skip(s.one())
               Kit.skip(s.leave())
@@ -245,9 +255,11 @@ export const assignSym = (report) => R.pipe(
             if (j.pos === Tag.params) {
               for(const k of s.sub()) {
                 if (k.enter && k.type === Tag.Identifier) {
-                  const sym = id(k,nextSyms,false,false)
-                  if (sym)
+                  const sym = id(k,nextSyms,false)
+                  if (sym) {
                     params.push(sym)
+                    sym.param = i.value
+                  }
                 }
               }
               Kit.skip(s.leave())
@@ -260,11 +272,15 @@ export const assignSym = (report) => R.pipe(
               k.declScope = i.value
               k.declBlock = j.value
             }
-            if (funcId && !ti.funDecl) {
-              funcId.declScope = i.value
-              funcId.declBlock = j.value
+            if (funcId) {
+              if (!ti.funDecl) {
+                funcId.declScope = i.value
+                funcId.declBlock = j.value
+              }
+              funcId.func = i.value
             }
             i.value.funcId = funcId
+            i.value.paramSyms = params
             checkScope(j.value,nextSyms)
             Kit.skip(s.leave())
             break
@@ -277,10 +293,10 @@ export const assignSym = (report) => R.pipe(
                 if(k && k.pos === Tag.id) {
                   for(const l of s.one()) {
                     if (l.enter && l.type === Tag.Identifier)
-                      id(l,dstSyms,unordered,false)
+                      id(l,dstSyms,unordered,loop)
                   }
                 }
-                walk(func,block,funcSyms,blockSyms)
+                walk(func,block,funcSyms,blockSyms,loop)
               }
             }
             break
@@ -289,17 +305,17 @@ export const assignSym = (report) => R.pipe(
               const nextSyms = []
               for(const j of s.one()) {
                 if (j.enter && j.type === Tag.Identifier) {
-                  id(j,nextSyms)
+                  id(j,nextSyms,undefined,loop)
                 }
               }
-              walk(func,i.value,funcSyms,nextSyms)
+              walk(func,i.value,funcSyms,nextSyms,loop)
               checkScope(i.value,nextSyms)
             }
             break
           case Tag.Identifier:
             const fi = i.value.fieldInfo
             if (fi.declVar) {
-              id(i,blockSyms)
+              id(i,blockSyms,undefined,loop)
             } else if (fi.expr || fi.lval)
               i.value.decl = false
             break
@@ -321,7 +337,7 @@ export const assignSym = (report) => R.pipe(
           case Tag.Identifier:
             let {sym} = i.value
             if (i.value.decl === true) {
-              if (sym.strict && (!sym.unordered || sym.funId))
+              if (sym.strict && (!sym.unordered || sym.funcId))
                 scope.set(sym.name,sym)
             } else if (i.value.decl === false) {
               if (sym == null) {
