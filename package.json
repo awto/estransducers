@@ -1,6 +1,6 @@
 {
   "name": "estransducers",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "ESTree AST iterator suitable for transducing",
   "main": "index.js",
   "scripts": {
