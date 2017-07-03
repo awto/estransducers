@@ -45,39 +45,38 @@ export default R.pipe(
             const body = [...Kit.inBlockBody(s,walk())]
             Kit.skip(s.till(v => v.leave && v.type === Match.Root))
             const lab = s.label()
-            s.template(Tag.push,`
+            yield* s.template(Tag.push,`
              {
-               const _e = $$;
+               const _e = $_;
                const _arr = e$y$arr(_e);
                if (_arr != null) {
                   const _len = _arr.length;
-                  $$: for(let _i = 0; _i < _len; ++_i) {
-                    $$;
-                    $$;
+                  $_: for(let _i = 0; _i < _len; ++_i) {
+                    $_;
+                    $_;
                   }
                } else {
                  const _iter = _e[Symbol.iterator]()
-                 $$: for(let _i = _iter.next(); !_i.done; _i = _iter.next()) {
-                   $$;
-                   $$;
+                 $_: for(let _i = _iter.next(); !_i.done; _i = _iter.next()) {
+                   $_;
+                   $_;
                  }
                }
              }`)
-            yield* s.open()
             yield s.enter(Tag.init,Kit.Subst)
             yield* init
             yield* s.leave()
-            yield* s.open()
+            yield* s.refocus()
             yield s.tok(Tag.label,label == null ? Tag.Null : T.identifier(label))
-            yield* s.open()
+            yield* s.refocus()
             yield* walkDecls(decls,"=_arr[_i]")
-            yield* s.open()
+            yield* s.refocus()
             yield* body
-            yield* s.open()
+            yield* s.refocus()
             yield s.tok(Tag.label,label == null ? Tag.Null : T.identifier(label))
-            yield* s.open()
+            yield* s.refocus()
             yield* walkDecls([...Kit.clone(decls)],"=_i.value")
-            yield* s.open()
+            yield* s.refocus()
             yield* Kit.clone(body)
             yield* lab()
           }

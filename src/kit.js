@@ -442,17 +442,10 @@ export function* toks(pos,s,...syms) {
         case "$":
           node.name = name.substr(1)
           break
-        case "S":
+        case "I":
           assert.ok(syms.length > 0)
           i.value.sym = syms.shift()
           break
-        default:
-          const sub = name.substr(1)
-          if (!isNaN(sub)) {
-            const x = +sub
-            assert.ok(syms.length > x)
-            i.value.sym = syms[x]
-          }
         }
       }
       yield i
@@ -476,13 +469,14 @@ export function Template(Super) {
       super(cont)
       this._tstack = []
     }
-    template(pos,node) {
+    *template(pos,node,...syms) {
       if (node.substr != null)
-        node = toArray(toks(pos,node))
+        node = toArray(toks(pos,node,...syms))
       this._stack.unshift(templateTok)
       this._tstack.unshift(node)
+      return (yield* this.refocus())
     }
-    *open() {
+    *refocus() {
       const arr = this._tstack[0]
       while(arr.length) {
         const f = arr.shift()
@@ -492,7 +486,7 @@ export function Template(Super) {
             const n = arr[0]
             if (n != null
                 && n.type === Tag.Identifier
-                && n.value.node.name === "$$")
+                && n.value.node.name === "$_")
             {
               while(arr.length && arr.shift().value !== f.value) {}
               return f.pos
@@ -501,7 +495,7 @@ export function Template(Super) {
           case Tag.Identifier:
             if (f.type === Tag.Identifier) {
               const n = f.value.node.name
-              if (n === "$$" || n === "$E") {
+              if (n === "$_" || n === "$E") {
                 while(arr.length && arr.shift().value !== f.value) {}
                 return f.pos
               }

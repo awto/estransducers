@@ -202,20 +202,20 @@ describe("template",function() {
   it("should feel the placeholders", function() {
     function* gen() {
       const s = Kit.output()
-      s.template(Tag.top,`
-        function $$(a,$$) {
-          $$
-          console.log($$)
+      const fpos = yield* s.template(Tag.top,`
+        function $_(a,$_) {
+          $_
+          console.log($_)
           $E
         }
       `)
-      yield s.tok((yield* s.open()),T.identifier("F"))
-      yield s.tok((yield* s.open()),T.identifier("X"))
-      yield* s.toks((yield* s.open()),`*
+      yield s.tok(fpos,T.identifier("F"))
+      yield s.tok((yield* s.refocus()),T.identifier("X"))
+      yield* s.toks((yield* s.refocus()),`*
                               console.log("hi")
                               console.log("there")`)
-      yield* s.toks((yield* s.open()),`=a + b`)
-      yield* s.toks((yield* s.open()),`=a = b`)
+      yield* s.toks((yield* s.refocus()),`=a + b`)
+      yield* s.toks((yield* s.refocus()),`=a = b`)
       yield* s.leave()
     }
     const res = 'function F(a,X){console.log("hi");'+

@@ -587,3 +587,60 @@ export const resolve = R.pipe(
   calcBlockRefs,
   solve)
 
+export const tempVar = symbol("tempVar")
+
+export function* emitTempVar() {
+  const sym = newSym("_temp")
+  yield tok(tempVar,{sym})
+  return sym
+}
+
+/** emit `var` declarations for each `tempVar` */
+export const resolveTempVars = R.pipe(
+  function collectTempVars(si) {
+    const s = Kit.auto(si)
+    function* walk(b) {
+      for(const i of s.sub()){
+        if (i.enter) {
+          switch(i.type) {
+          case Tag.BlockStatement:
+          case Tag.Program:
+            yield i
+            walk(i.value.tempVars = [])
+            continue
+          case tempVar:
+            b.push(i.value.sym)
+            s.close(i)
+            continue
+          }
+        }
+        yield i
+      }
+    }
+    return walk()
+  },
+  Array.from,
+  function* emplaceTempVars(si) {
+    const s = Kit.auto(si)
+    for(const i of s) {
+      yield i
+      if (i.enter) {
+        switch(i.type) {
+        case Tag.BlockStatement:
+        case Tag.Program:
+          if (i.value.tempVars && i.value.tempVars.length) {
+            const lab = s.label()
+            yield* s.peelTo(Tag.body)
+            yield s.enter(Tag.push,Tag.VariableDeclaration,{node:{kind:"var"}})
+            yield s.enter(Tag.declarations, Tag.Array)
+            for(const sym of i.value.tempVars) {
+              yield s.enter(Tag.push, Tag.VariableDeclarator)
+              yield s.tok(Tag.id, Tag.Identifier, {sym})
+              yield* s.leave()
+            }
+            yield* lab()
+          }
+        }
+      }
+    }
+  })
