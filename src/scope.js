@@ -23,7 +23,8 @@ export function newSym(name = "", strict = false, decl) {
 export const undefinedSym = newSym("undefined", true)
 export const argumentsSym = newSym("arguments", true)
 
-const globals = new Map([["undefined",undefinedSym]])
+const globals = new Map([["undefined",undefinedSym],
+                         ["arguments",argumentsSym]])
 
 /**
  * sets temporal `node.name` for each Identifier for debug dumps outputs
@@ -78,6 +79,7 @@ export const resetSym = R.pipe(
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.Program:
+          case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:
             walk(i.value.decls = new Set())
             break
@@ -112,6 +114,7 @@ function reorderVarDecl(si) {
           yield* s.one()
           yield* left
           break
+        case Tag.ForAwaitStatement:
         case Tag.ForOfStatement:
         case Tag.ForInStatement:
           const j = s.curLev()
@@ -209,6 +212,7 @@ export const assignSym = (report) => R.pipe(
           switch(i.type) {
           case Tag.ForStatement:
           case Tag.ForInStatement:
+          case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:
             {
               const nextSyms = []
@@ -363,6 +367,7 @@ export const assignSym = (report) => R.pipe(
           case Tag.ForStatement:
           case Tag.ForInStatement:
           case Tag.Program:
+          case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:
             const npar = new Map(par)
             for(const sym of i.value.decls) {
@@ -591,7 +596,7 @@ export const tempVar = symbol("tempVar")
 
 export function* emitTempVar() {
   const sym = newSym("_temp")
-  yield tok(tempVar,{sym})
+  yield tok(tempVar,tempVar,{sym})
   return sym
 }
 
@@ -617,9 +622,9 @@ export const resolveTempVars = R.pipe(
         yield i
       }
     }
-    return walk()
+    return walk([])
   },
-  Array.from,
+  Kit.toArray,
   function* emplaceTempVars(si) {
     const s = Kit.auto(si)
     for(const i of s) {

@@ -7,6 +7,8 @@ import eagerGenerators from "../src/samples/eagerGenerators"
 import joinMemExprs from "../src/samples/joinMemExprs"
 import looseForOf from "../src/samples/looseForOf"
 import instrumentation from "../src/samples/instrumentation"
+import closConv from "../src/samples/closConvPass"
+import * as RT from "../src/rt"
 import * as Trace from "../src/trace"
 
 const gen = ast => generate(ast,{retainLines:false,concise:true},"").code
@@ -393,3 +395,94 @@ describe("extra loose for-ofs", function() {
   })
   
 })
+
+describe("closure conversion", function() {
+  const run = R.pipe(
+    R.invoker(0,"toString"),
+    parse,
+    produce,
+    closConv,
+    consume,
+    R.prop("top"),
+    gen)
+  RT.setModule("rt","function closure() {}")
+  it("sample1", function() {
+    expect(run(`
+      function apply() {
+        return new ff(10);
+      }
+      function ff() {
+        var i = 0, j = 0;
+        function gg(k) {
+          var obj = {
+            kk: function kk() {
+              return i + j + arguments[1];
+            }
+          }
+          for(var j of arr) {
+            i += j + k;
+          }
+          obj.kk(10);
+          return obj;
+        }
+        gg(j).kk(1);
+        new gg(0);
+      }`)).to.equal(pretty(`
+        function closure() {}
+
+        var apply;
+        
+        function _apply(fn) {
+          this.fn = fn;
+        }
+        
+        closure(_apply, function apply(self) {
+          return this.fn.ff.constr(10);
+        });
+        
+        function kk(ff, _gg) {
+          this.ff = ff;
+          this._gg = _gg;
+        }
+        
+        closure(kk, function kk(self) {
+          var args = Array.from(arguments).slice(1),
+          kk;
+          apply = new _apply(this);
+          
+          return this.ff.i + this._gg.j + args[1];
+        });
+        
+        function _gg(ff) {
+          this.ff = ff;
+        }
+        
+        closure(_gg, function gg(self, k) {
+          var obj;
+          obj = {
+            kk: new kk(this.ff, this)
+          };
+
+          for (this.j of arr) {
+            this.ff.i += this.j + k;
+          }
+          obj.kk.call(obj, 10);
+          return obj;
+        });
+        
+        function ff() {}
+        
+        closure(ff, function ff(self) {
+          var j, gg, temp;
+          gg = new _gg(this);
+          this.i = 0, j = 0;
+
+          (temp = gg.call(undefined, j)).kk.call(temp, 1);
+          gg.constr(0);
+        });
+        this.ff = new ff();
+      `));
+
+  })
+})
+
