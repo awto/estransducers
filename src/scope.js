@@ -131,6 +131,17 @@ function reorderVarDecl(si) {
   return walk(s)
 }
 
+export function cloneSym(sym) {
+  const res = newSym(sym.orig)
+  res.declScope = sym.declScope
+  res.declLoop = sym.declLoop
+  res.captLoop = sym.captLoop
+  res.declBlock = sym.declBlock
+  res.decl = sym.decl
+  res.param = sym.param
+  return res
+}
+
 /**
  * assigns unique Symbol object for each variable declaration and usage
  * stores it in sym fields, for root value stores map syms mapping the
@@ -143,7 +154,8 @@ function reorderVarDecl(si) {
  *       sym: Symbol;
  *       unordered: boolean;
  *       declScope: TokenValue;
- *       declLoop?: TokenValue;
+ *       declLoop?: TokenValue; -- loop scope
+ *       captLoop?: TokenValue; -- loop to be captured in
  *       declBlock?: TokenValue;
  *       decl?: TokenValue;
  *       param?: TokenValue;
@@ -197,7 +209,7 @@ export const assignSym = (report) => R.pipe(
           sym.unordered = unordered
           sym.declScope = func
           sym.declBlock = block
-          sym.declLoop = loop
+          sym.declLoop = sym.captLoop = loop
           sym.param = null
           sym.func = null
           sym.decl = i
@@ -211,6 +223,22 @@ export const assignSym = (report) => R.pipe(
         if (i.enter) {
           switch(i.type) {
           case Tag.ForStatement:
+            {
+              const nextSyms = []
+              const ini = s.cur()
+              if (ini.pos === Tag.init
+                  && ini.type === Tag.VariableDeclaration
+                  && ini.value.node.kind !== "var") {
+                s.take()
+                walk(func,i.value,funcSyms,nextSyms,loop)
+                for(const j of nextSyms)
+                  j.captLoop = i.value
+                s.close(ini)
+              }
+              walk(func,i.value,funcSyms,nextSyms,i.value)
+              checkScope(i.value,nextSyms)
+            }
+            break
           case Tag.ForInStatement:
           case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:

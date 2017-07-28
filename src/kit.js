@@ -794,7 +794,7 @@ export function result(s,buf) {
     return i.value
   buf.push(i.value)
   const name = i.value.value && i.value.value.stageName
-  const babel = _opts.babel
+  const babel = false // _opts.babel
   // for debugging purposes, let the debugger catch the exception
   if (!babel) {
     for(;!(i = iter.next()).done;)
@@ -805,20 +805,28 @@ export function result(s,buf) {
     for(;!(i = iter.next()).done;)
       buf.push(i.value)
   } catch(e) {
+    if (e._skip)
+      throw e
     let msg = e.message
     if (name)
       msg += ` during ${name}`
     let node = e.esNode || i && i.value.node // || si._last
     if (!node || !node.loc && !node._loc) {
       msg += " (the position is approximated)"
-        for(const i of reverse(buf)) {
-          node = i.value.node
-          if (node && (node.loc || node._loc))
-            throw babel.root.hub.file.buildCodeFrameError(node, msg)
+      for(const i of reverse(buf)) {
+        node = i.value.node
+        if (node && (node.loc || node._loc)) {
+          const next = babel.root.hub.file.buildCodeFrameError(node, msg)
+          next._skip = true
+          throw next
         }
+      }
       node = babel.root.node
+      e.esNode = node
     }
-    throw babel.root.hub.file.buildCodeFrameError(node, msg)
+    const next = babel.root.hub.file.buildCodeFrameError(node, msg)
+    next._skip = true
+    throw next
   }
   return i.value
 }
@@ -870,6 +878,13 @@ export function* inBlockBody(s,inner) {
     yield* inner
     skip(lab())
   }
+}
+
+/** copies everything until first not-import statement */
+export function* fileBody(s) {
+  yield* s.till(i => i.pos === Tag.body && i.type === Tag.Array)
+  while(s.cur().type === Tag.ImportDeclaration)
+    yield* s.one()
 }
 
 export function hasAnnot(node,name) {
@@ -976,13 +991,13 @@ export const wrap = R.curry(function* wrap(name,f,s) {
       let msg = `${e.message} during ${name}`
       let node = e.esNode || i && i.value.node // || si._last
       if (!node || !node.loc && !node._loc) {
-        msg += " (the position is approximated)"
         for(const i of si) {
           node = i.value.node
           if (node && (node.loc || node._loc))
             throw babel.root.hub.file.buildCodeFrameError(node, msg)
         }
         node = babel.root.node
+        e.esNode = node
       }
       throw babel.root.hub.file.buildCodeFrameError(node, msg)
     }
@@ -991,7 +1006,7 @@ export const wrap = R.curry(function* wrap(name,f,s) {
 })
 
 /** marks all next exceptions with `name`, eagerly consumes the former stage */
-function stage(name, s) {
+export function stage(name, s) {
   const res = toArray(s)
   res[0].value.stageName = name
   return res
@@ -1037,9 +1052,26 @@ export const babelBridge = R.curry(function babelBridge(pass,path,state) {
                          file:Object.assign(state.file.opts),
                          babel:{root:path,state}},
                        _opts)
-  pass(produce(path.node))
+  pass(produce({type:"File",program:path.node}))
   _opts = optSave
 })
+
+export function babelPreset(pass) {
+  return {
+    plugins: [
+      function (t) {
+        return {
+          visitor:{
+            Program(path,state) {
+              path.skip()
+              babelBridge(i => consume(pass(i)),path,state)
+            }
+          }
+        }
+      }
+    ]
+  }
+}
 
 export const transform = R.curryN(2,function transform(pass,ast,opts) {
   const optSave = _opts
@@ -1072,7 +1104,6 @@ ExtIterator.prototype.error = function(msg,node) {
   if (node)
     e.esOrigNode = node
   if (!node || !node._loc && !node.loc) {
-    e.messsage += "(the position is approximated)"
     for(const i of this) {
       node = i.value.node
       if(node && (node.loc || node._loc)) {

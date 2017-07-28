@@ -128,7 +128,7 @@ function* traceNodeImpl(prefix, s) {
     if (t.length) {
       for(const j of t) {
         let c = j.txt
-        c = !i.enter(chalk.dim(j.txt)) || j.txt
+        c = i.enter ? j.txt : chalk.dim(j.txt)
       }
       if (comments.length)
         commentsTxt = chalk.bold("[") + comments.join(" ") + chalk.bold("]")

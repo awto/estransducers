@@ -397,6 +397,7 @@ describe("extra loose for-ofs", function() {
 })
 
 describe("closure conversion", function() {
+  Kit.setOpts({noRT:true})
   const run = R.pipe(
     R.invoker(0,"toString"),
     parse,
@@ -405,7 +406,6 @@ describe("closure conversion", function() {
     consume,
     R.prop("top"),
     gen)
-  RT.setModule("rt","function closure() {}")
   it("sample1", function() {
     expect(run(`
       function apply() {
@@ -428,10 +428,9 @@ describe("closure conversion", function() {
         gg(j).kk(1);
         new gg(0);
       }`)).to.equal(pretty(`
-        function closure() {}
 
         var apply;
-        
+        var g = {};
         function _apply(fn) {
           this.fn = fn;
         }
@@ -439,18 +438,16 @@ describe("closure conversion", function() {
         closure(_apply, function apply(self) {
           return this.fn.ff.constr(10);
         });
-        
-        function kk(ff, _gg) {
+        apply = new _apply(g); 
+        function kk(ff) {
           this.ff = ff;
-          this._gg = _gg;
         }
         
         closure(kk, function kk(self) {
           var args = Array.from(arguments).slice(1),
           kk;
-          apply = new _apply(this);
           
-          return this.ff.i + this._gg.j + args[1];
+          return this.ff.i + this.ff.j + args[1];
         });
         
         function _gg(ff) {
@@ -460,10 +457,10 @@ describe("closure conversion", function() {
         closure(_gg, function gg(self, k) {
           var obj;
           obj = {
-            kk: new kk(this.ff, this)
+            kk: new kk(this.ff)
           };
 
-          for (this.j of arr) {
+          for (this.ff.j of arr) {
             this.ff.i += this.j + k;
           }
           obj.kk.call(obj, 10);
@@ -473,16 +470,94 @@ describe("closure conversion", function() {
         function ff() {}
         
         closure(ff, function ff(self) {
-          var j, gg, temp;
+          var gg, temp;
           gg = new _gg(this);
-          this.i = 0, j = 0;
+          this.i = 0, this.j = 0;
 
-          (temp = gg.call(undefined, j)).kk.call(temp, 1);
+          (temp = gg.call(undefined, this.j)).kk.call(temp, 1);
           gg.constr(0);
         });
-        this.ff = new ff();
+        g.ff = new ff();
       `));
+    
+  })
+  it("sample1", function() {
+    expect(run(`
+      var i = 0;
+      function a(j) {
+        i+=j;
+        function b(k) {
+          i+=k+j;
+          return i
+        }
+        return b
+      }
+      console.time("R")
+      let res = 0
+      for(let i = 0; i < 100000; i++) {
+        var k = a(i)
+        for(let j = 0; j < 10000; j++) {
+          k(j);
+        }
+        res = k(10)
+      }
+      console.timeEnd("R")
+      console.log("E", res)
+      
+      console.log([{num:2},{num:1},{num:3}].sort(function(a, b) { return a.num - b.num; }))`
+              )).to.equal(pretty(`
+        var a, res, _i, k, j, temp;
 
+        var g = {};
+        
+        function _b(fn, _a) {
+          this.fn = fn;
+          this._a = _a;
+        }
+        
+        closure(_b, function b(self, k) {
+          this.fn.i += k + this._a.j;
+          return this.fn.i;
+        });
+        
+        function _a(fn) {
+          this.fn = fn;
+        }
+        
+        closure(_a, function a(self, j) {
+          var b;
+          this.j = j;
+          b = new _b(this.fn, this);
+          
+          this.fn.i += this.j;
+          
+          return b;
+        });
+        a = new _a(g);
+        
+        function fn() {}
+        
+        closure(fn, function (self, a, b) {
+          return a.num - b.num;
+        });
+        g.i = 0;
+        
+        console.time.call(console, "R");
+        res = 0;
+        
+        for (_i = 0; _i < 100000; _i++) {
+          k = a.call(undefined, _i);
+          
+          for (j = 0; j < 10000; j++) {
+            k.call(undefined, j);
+          }
+          res = k.call(undefined, 10);
+        }
+        console.timeEnd.call(console, "R");
+        console.log.call(console, "E", res);
+        
+        console.log.call(console, (temp = [{ num: 2 }, { num: 1 }, { num: 3 }]).sort.call(temp, new fn()));
+        `))
   })
 })
-
+       

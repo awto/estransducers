@@ -220,6 +220,7 @@ const styles = {
   large: "font-size:xx-large;color:orange",
   hl: "font-size:large;color:navy;",
   small: "font-size:large;color:navy;",
+  smallH: "font-size:large;color:orange;font-weight:bolder",
   nodetype: "font-size:xx-small;color:green;font-weight:bolder",
   none: ""
 }
