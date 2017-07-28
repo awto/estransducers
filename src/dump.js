@@ -1,4 +1,3 @@
-import * as R from "ramda"
 import * as Kit from "./kit"
 import {tempNames} from "./scope"
 import * as Trace from "./trace"
@@ -28,7 +27,7 @@ export function* markNodeType(s) {
   }
 }
 
-export const convertCtrl = R.pipe(
+export const convertCtrl = Kit.pipe(
   resetFieldInfo,
   markNodeType,
   Array.from,
@@ -130,12 +129,12 @@ function* applyComments(s) {
   }
 }
 
-export const toConsole = R.curry(function toConsole(tag,s) {
+export const toConsole = Kit.curry(function toConsole(tag,s) {
   if (BROWSER_DEBUG)
     console.group(`dump %c${tag}`,"color:orange;font-size:large")
   else
     console.log(`dump ${tag}`)
-  const col = R.pipe(convertCtrl,
+  const col = Kit.pipe(convertCtrl,
                      color,
                      tempNames,
                      Array.from,
@@ -150,7 +149,7 @@ export const toConsole = R.curry(function toConsole(tag,s) {
 })
 
 
-export const fin = R.pipe(
+export const fin = Kit.pipe(
   removeNulls,
   tempNames,
   convertCtrl,
@@ -162,7 +161,7 @@ export function toStr(s) {
   return generate(consume(fin(Kit.repos(s,Tag.top))).top).code
 }
 
-export const output = R.curry(function dump(tag,s) {
+export const output = Kit.curry(function dump(tag,s) {
   const sa = Kit.toArray(s)
   const sl = Kit.auto(Kit.clone(sa))
   const opts = sl.opts || {}

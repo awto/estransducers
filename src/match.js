@@ -1,5 +1,4 @@
 import * as Kit from "./kit"
-import * as R from "ramda"
 import {Tag,enter,leave,tok,symbol} from "./core"
 import * as assert from "assert"
 import * as Trace from "./trace"
@@ -8,7 +7,7 @@ import dump from "./dump"
 export const Root = symbol("match.root","ctrl")
 export const Placeholder = symbol("match.placeholder","ctrl")
 
-export const commit = R.pipe(
+export const commit = Kit.pipe(
   Array.from,
   function*(s) {
     const buf = []
@@ -41,7 +40,7 @@ export const clean = function* (s) {
   }
 }
 
-export const inject = R.curry(function* matchInject(pattern, si) {
+export const inject = Kit.curry(function* matchInject(pattern, si) {
   const pats = (Array.isArray(pattern) ? pattern : [pattern])
         .map(i => Kit.toArray(Kit.toks(Tag.top,i)))
   const starts = pats.map((i,x) => i[0].type)
@@ -185,6 +184,6 @@ export const inject = R.curry(function* matchInject(pattern, si) {
   }
 })
 
-export const run = R.curry(function(pat,si) {
+export const run = Kit.curry(function(pat,si) {
   return commit(inject(pat,si))
-})
+},true)

@@ -4,7 +4,6 @@ import generate from "babel-generator"
 import * as T from "babel-types"
 
 import * as Kit from "../src/kit"
-import * as R from "ramda"
 const fs = require("fs")
 
 describe("lookahead iterator", function() {

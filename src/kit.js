@@ -1,4 +1,3 @@
-import * as R from "ramda"
 import * as assert from "assert"
 import {produce,consume,Tag,enter,resetFieldInfo,
         leave,tok,symbol,symInfo,typeInfo,removeNulls
@@ -936,7 +935,7 @@ ExtIterator.prototype.till = function(pred) { return till(pred,this); }
  * the found token is not consumed
  * returns true if found
  */
-export const find = R.curry(function* find(pred, s) {
+export const find = curry(function* find(pred, s) {
   if (pred(s.cur()))
     return true
   for(const i of s) {
@@ -974,7 +973,7 @@ export function share(s) {
   }
 }
 
-export const wrap = R.curry(function* wrap(name,f,s) {
+export const wrap = curry(function* wrap(name,f,s) {
   const si = auto(s)
   const iter = f(si)[Symbol.iterator]()
   let i
@@ -1013,7 +1012,7 @@ export function stage(name, s) {
 }
 
 /** to be removed */
-export const checkpointLazy = R.curry(function* checkpointLazy(name,s) {
+export const checkpointLazy = curry(function* checkpointLazy(name,s) {
   const babel = _opts.babel
   const iter = s[Symbol.iterator]()
   let last, i
@@ -1039,14 +1038,14 @@ export const checkpointLazy = R.curry(function* checkpointLazy(name,s) {
 })
 
 /** to be removed */
-export const checkpoint = R.curry(function(name,s) {
+export const checkpoint = curry(function(name,s) {
   return [...checkpointLazy(name,s)]
 })
 
 /**
  * babel plugin visitor methods, typically to be applied only to Program node
  */
-export const babelBridge = R.curry(function babelBridge(pass,path,state) {
+export const babelBridge = curry(function babelBridge(pass,path,state) {
   const optSave = _opts
   _opts = Object.assign({args:Object.assign({},state.opts),
                          file:Object.assign(state.file.opts),
@@ -1073,7 +1072,7 @@ export function babelPreset(pass) {
   }
 }
 
-export const transform = R.curryN(2,function transform(pass,ast,opts) {
+export const transform = curryN(2,function transform(pass,ast,opts) {
   const optSave = _opts
   Object.assign(_opts = {},{args:{},file:{},babel:false},opts)
   try {
@@ -1339,13 +1338,13 @@ function adjustFieldTypeImpl(s) {
  * for expr/stmt if field type is different to actual value assigned 
  * it tries to change the value's type
  */
-export const adjustFieldType = R.pipe(
+export const adjustFieldType = pipe(
   resetFieldInfo,
   adjustFieldTypeImpl
 )
 
 /** like `adjustFieldType` but with some simplifications */
-export const adjustFieldTypeSimple = R.pipe(
+export const adjustFieldTypeSimple = pipe(
   resetFieldInfo,
   removeEmptyBlocks,
   adjustFieldTypeImpl
@@ -1374,7 +1373,7 @@ export function la(s) {
  *
  *     (Opts -> Toks?) -> Toks -> Toks
  */ 
-export const select = R.curry(function select(fn,s) {
+export const select = curry(function select(fn,s) {
   const [h, sn] = la(s)
   const pass = fn(h.value.opts)
   return pass ? pass(sn) : sn
@@ -1386,7 +1385,7 @@ export const select = R.curry(function select(fn,s) {
  *
  *     (Opts -> boolean) -> (Toks -> Toks) -> (Toks -> Toks)? -> Toks -> Toks
  */
-export const enableIf = R.curryN(2,function enableIf(pred,t,e,s) {
+export const enableIf = curryN(2,function enableIf(pred,t,e,s) {
   if (s == null) {
     if (e != null && typeof e !== "function") {
       s = e
@@ -1405,7 +1404,7 @@ export const enableIf = R.curryN(2,function enableIf(pred,t,e,s) {
 export const packed = symbol("packed")
 
 /** packs not interested tokens into `packed` node */
-export const pack = R.curry(function* pack(pred,s) {
+export const pack = curry(function* pack(pred,s) {
   let buf = []
   for(const i of s) {
     if (i.type === packed) {
@@ -1435,23 +1434,23 @@ export function* unpack(s) {
   }
 }
 
-export const filter = R.curry(function* filter(pred,s) {
+export const filter = curry(function* filter(pred,s) {
   for(const i of s)
     if (pred(i))
       yield i
 })
 
-export const flatMap = R.curry(function* flatMap(act,s) {
+export const flatMap = curry(function* flatMap(act,s) {
   for(const i of s)
     yield* act(i)
 })
 
-export const map = R.curry(function* map(fun,s) {
+export const map = curry(function* map(fun,s) {
   for(const i of s)
     yield fun(i)
 })
 
-export const forEach = R.curry(function forEach(act,s) {
+export const forEach = curry(function forEach(act,s) {
   for(const i of s)
     act(i)
 })
@@ -1526,7 +1525,7 @@ export function groupUniq/*::<K,V>*/(i/*:Iterable<[K,V]>*/)/*: Map<K,Set<V>>*/ {
 }
 
 /** a postprocess pass for any pass removing some expressions */
-export const cleanEmptyExprs = R.pipe(
+export const cleanEmptyExprs = pipe(
   function markLastSubExpr(si) {
     const s = auto(si)
     function* walk() {
@@ -1601,4 +1600,44 @@ export const cleanEmptyExprs = R.pipe(
     return walk(s)
   },
   removeNulls)
+
+/**
+ * similar to Ramda.pipe, likely less efficient, 
+ * but Ramda dependency can be dropped
+ */
+export function pipe() {
+  var args = arguments
+  var _debTrace = []
+  return function pipeImpl(cur) {
+    for(let i = 0, len = args.length; i < len; ++i) {
+      _debTrace.push(cur)
+      cur = args[i](cur)
+    }
+    return cur
+  }
+}
+
+/**
+ * similar to Ramda.curryN, likely less efficient, 
+ * but Ramda dependency can be dropped
+ */
+export function curryN(num,fun,trace) {
+  function step(args) {
+    return function curryStep() {
+      const next = args.concat(Array.from(arguments))
+      return next.length >= num ? fun.apply(undefined, next)
+        : step(next)
+    }
+  }
+  return step([])
+}
+
+/**
+ * similar to Ramda.curry, likely less efficient, 
+ * but Ramda dependency can be dropped
+ */
+export function curry(fun,trace) {
+  return curryN(fun.length,fun,trace)
+}
+
 

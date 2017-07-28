@@ -2,7 +2,6 @@ import {produce,consume,Tag} from "../src"
 import {parse} from "babylon"
 import generate from "babel-generator"
 import * as Kit from "../src/kit"
-import * as R from "ramda"
 import eagerGenerators from "../src/samples/eagerGenerators"
 import joinMemExprs from "../src/samples/joinMemExprs"
 import looseForOf from "../src/samples/looseForOf"
@@ -12,16 +11,16 @@ import * as RT from "../src/rt"
 import * as Trace from "../src/trace"
 
 const gen = ast => generate(ast,{retainLines:false,concise:true},"").code
-const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)
+const pretty = Kit.pipe(v => v.toString(),parse,gen)
 
 describe("join member expression", function() {
-  const run = R.pipe(
-    R.invoker(0,"toString"),
+  const run = Kit.pipe(
+    v => v.toString(),
     parse,
     produce,
     joinMemExprs,
     consume,
-    R.prop("top"),
+    v => v.top,
     gen)
   it("sample1", function() {
     expect(run(`function a() {
@@ -52,13 +51,13 @@ describe("join member expression", function() {
 })
 
 describe("instrumentation", function() {
-  const run = R.pipe(
-    R.invoker(0,"toString"),
+  const run = Kit.pipe(
+    v => v.toString(),
     parse,
     produce,
     instrumentation,
     consume,
-    R.prop("top"),
+    v => v.top,
     gen)
   it("sample1", function() {
     expect(run(`function a() {
@@ -175,13 +174,13 @@ describe("instrumentation", function() {
 })
 
 describe("eager generators", function() {
-  const run = R.pipe(
-    R.invoker(0,"toString"),
+  const run = Kit.pipe(
+    v => v.toString(),
     parse,
     produce,
     eagerGenerators,
     consume,
-    R.prop("top"),
+    v => v.top,
     gen)
   it("sample1", function() {
     expect(run(`
@@ -224,13 +223,13 @@ describe("eager generators", function() {
 })
   
 describe("extra loose for-ofs", function() {
-  const run = R.pipe(
-    R.invoker(0,"toString"),
+  const run = Kit.pipe(
+    v => v.toString(),
     parse,
     produce,
     looseForOf,
     consume,
-    R.prop("top"),
+    v => v.top,
     gen)
   it("sample1", function() {
     expect(run(`function a() {
@@ -398,13 +397,13 @@ describe("extra loose for-ofs", function() {
 
 describe("closure conversion", function() {
   Kit.setOpts({noRT:true})
-  const run = R.pipe(
-    R.invoker(0,"toString"),
+  const run = Kit.pipe(
+    v => v.toString(),
     parse,
     produce,
     closConv,
     consume,
-    R.prop("top"),
+    v => v.top,
     gen)
   it("sample1", function() {
     expect(run(`
@@ -428,60 +427,51 @@ describe("closure conversion", function() {
         gg(j).kk(1);
         new gg(0);
       }`)).to.equal(pretty(`
-
         var apply;
         var g = {};
         function _apply(fn) {
           this.fn = fn;
         }
-        
         closure(_apply, function apply(self) {
           return this.fn.ff.constr(10);
         });
-        apply = new _apply(g); 
-        function kk(ff) {
+        apply = new _apply(g);
+        function kk(ff, _gg) {
           this.ff = ff;
+          this._gg = _gg;
         }
-        
         closure(kk, function kk(self) {
           var args = Array.from(arguments).slice(1),
-          kk;
-          
-          return this.ff.i + this.ff.j + args[1];
+              kk;
+          return this.ff.i + this._gg.j + args[1];
         });
-        
         function _gg(ff) {
           this.ff = ff;
         }
-        
         closure(_gg, function gg(self, k) {
           var obj;
           obj = {
-            kk: new kk(this.ff)
+            kk: new kk(this.ff, this)
           };
-
-          for (this.ff.j of arr) {
+          for (a of arr) {
             this.ff.i += this.j + k;
           }
           obj.kk.call(obj, 10);
           return obj;
         });
-        
         function ff() {}
-        
         closure(ff, function ff(self) {
-          var gg, temp;
+          var j, gg, temp;
           gg = new _gg(this);
-          this.i = 0, this.j = 0;
-
-          (temp = gg.call(undefined, this.j)).kk.call(temp, 1);
+          this.i = 0, j = 0;
+          (temp = gg.call(undefined, j)).kk.call(temp, 1);
           gg.constr(0);
         });
         g.ff = new ff();
       `));
     
   })
-  it("sample1", function() {
+  it("sample2", function() {
     expect(run(`
       var i = 0;
       function a(j) {

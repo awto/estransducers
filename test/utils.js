@@ -3,7 +3,6 @@ import * as Kit from "../src/kit"
 import {parse} from "babylon"
 import generate from "babel-generator"
 import * as T from "babel-types"
-import * as R from "ramda"
 
 function toStr(iter) {
   const a = Array.from(iter)

@@ -1,11 +1,10 @@
 import {produce,consume,Tag} from "../core"
 import * as Kit from "../kit"
-import * as R from "ramda"
 import * as T from "babel-types"
 import * as assert from "assert"
 import * as Match from "../match"
 
-export default R.pipe(
+export default Kit.pipe(
   Match.run(`for($$ of $$) $$`),
   function eagerForOfTransform(si) {
     const s = Kit.auto(si)

@@ -4,13 +4,12 @@ import generate from "babel-generator"
 import * as Kit from "../src/kit"
 import * as Match from "../src/match"
 import * as Trace from "../src/trace"
-import * as R from "ramda"
 
 const gen = ast => generate(ast,{retainLines:false,concise:true,quotes:"'"}).code
-const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)
+const pretty = Kit.pipe(v => v.toString(),parse,gen)
 const runImpl = (pats) =>
-      R.pipe(
-        R.invoker(0,"toString"),
+      Kit.pipe(
+        v => v.toString(),
         parse,
         produce,
         Match.run(pats))

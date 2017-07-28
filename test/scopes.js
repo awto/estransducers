@@ -4,10 +4,9 @@ import generate from "babel-generator"
 import * as Kit from "../src/kit"
 import * as Scope from "../src/scope"
 import * as Trace from "../src/trace"
-import * as R from "ramda"
 
 const gen = ast => generate(ast,{retainLines:false,concise:true,quotes:"'"}).code
-const pretty = R.pipe(R.invoker(0,"toString"),parse,gen)
+const pretty = Kit.pipe(v => v.toString(),parse,gen)
 
 function varDeclsEs5(si) {
   const s = Kit.auto(si)
@@ -79,7 +78,7 @@ function* allToVar(s) {
   }
 }
 
-const convertImpl = (pass) => R.pipe(
+const convertImpl = (pass) => Kit.pipe(
   i => i.toString(),
   parse,
   produce,

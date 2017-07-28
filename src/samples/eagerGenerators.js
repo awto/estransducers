@@ -1,6 +1,5 @@
 import {produce,consume,Tag,symbol} from "../core"
 import * as Kit from "../kit"
-import * as R from "ramda"
 import * as T from "babel-types"
 import * as assert from "assert"
 import * as Trace from "../trace"
@@ -12,7 +11,7 @@ const specNames = {
   arguments: true
 }
 
-export default R.pipe(
+export default Kit.pipe(
   Kit.wrap("eager-generators-transform",function* transform(s) {
 //    s = Kit.auto(s)
     function* make(i) {

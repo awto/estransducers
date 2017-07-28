@@ -3,7 +3,6 @@ import * as Kit from "../kit"
 import * as Trace from "../trace"
 import dump from "../dump"
 import * as Scope from "../scope"
-import * as R from "ramda"
 import * as RT from "../rt"
 
 import {symbol,produce} from "../core"
@@ -17,7 +16,7 @@ function calcClosCapt(si) {
   const s = Kit.auto(sa)
   const closureSym = s.first.value.closureSym = Scope.newSym("closure")
   const rt = s.first.value.rt
-  rt.syms.push(closureSym)
+  rt.inlineSyms.push(closureSym)
   if (!s.opts.noRT)
     rt.sources.push(
       fs.readFileSync(path.join(__dirname,"closConvRT.js"),"utf-8"))
@@ -314,13 +313,13 @@ function substIds(si) {
   return walk(s.first.value)
 }
 
-export default R.pipe(
+export default Kit.pipe(
   Scope.prepare,
-  RT.setRT,
+  RT.init,
   calcClosCapt,
   replaceCalls,
   functToObj,
   Kit.toArray,
   substIds,
-  RT.inlineRT,
+  RT.inline,
   Scope.resolve)

@@ -4,7 +4,6 @@
  * for simplification. They change synthesized nodes.
  */
 import * as Kit from "./kit"
-import * as R from "ramda"
 import {Tag,symInfo,symbol} from "./core"
 import * as assert from "assert"
 import * as Trace from "./trace"

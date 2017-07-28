@@ -1,11 +1,11 @@
 import {produce,consume,Tag,symbol} from "../src"
+import * as Kit from "../src/kit"
 import {parse} from "babylon"
 import generate from "babel-generator"
-import R from "ramda"
 
 const Scope = symbol("Scope","ctrl")
 
-const subst = R.curry(function* subst(dict, s) {
+const subst = Kit.curry(function* subst(dict, s) {
   for(const i of s) {
     switch (i.type) {
     case Tag.Identifier:
@@ -76,22 +76,22 @@ function* scope(s) {
   }
 }
 
-const filter = R.curry(function* filter(pred, s) {
+const filter = Kit.curry(function* filter(pred, s) {
   for (let i of s) {
     if (pred(i))
       yield i;
   }
 })
 
-const rename = R.pipe(
+const rename = Kit.pipe(
   parse,
   produce,
   scope,
   subst({i:{type:"Identifier", name: "j"}}),
   consume,
-  R.prop("top"),
+  v => v.top,
   generate,
-  R.prop("code")
+  v => v.code
 );
 
 function pretty(txt) {

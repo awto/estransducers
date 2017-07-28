@@ -1,5 +1,4 @@
 import * as Kit from "./kit"
-import * as R from "ramda"
 import {Tag,TypeInfo as TI,symbol,tok,resetFieldInfo,symInfo} from "./core"
 import * as assert from "assert"
 import * as Trace from "./trace"
@@ -48,7 +47,7 @@ export function* tempNames(s) {
  * the transform pass has to use sym field to identifier 
  * symbols in `Identifier` nodes
  */
-export const resetSym = R.pipe(
+export const resetSym = Kit.pipe(
   resetFieldInfo,
   function resetSym(si) {
     const sa = Kit.toArray(si)
@@ -168,7 +167,7 @@ export function cloneSym(sym) {
  *                        & {root?:boolean}
  * 
  */
-export const assignSym = (report) => R.pipe(
+export const assignSym = (report) => Kit.pipe(
   resetFieldInfo,
   // collecting each declaration in each block before resolving
   // because function's may use the ones declared after
@@ -209,7 +208,7 @@ export const assignSym = (report) => R.pipe(
           sym.unordered = unordered
           sym.declScope = func
           sym.declBlock = block
-          sym.declLoop = sym.captLoop = loop
+          sym.declLoop = sym.captLoop = unordered ? null : loop
           sym.param = null
           sym.func = null
           sym.decl = i
@@ -614,7 +613,7 @@ function solve(si) {
 
 export const prepare = assignSym(true)
 
-export const resolve = R.pipe(
+export const resolve = Kit.pipe(
   resetSym,
   assignSym(false),
   calcBlockRefs,
@@ -629,7 +628,7 @@ export function* emitTempVar() {
 }
 
 /** emit `var` declarations for each `tempVar` */
-export const resolveTempVars = R.pipe(
+export const resolveTempVars = Kit.pipe(
   function collectTempVars(si) {
     const s = Kit.auto(si)
     function* walk(b) {

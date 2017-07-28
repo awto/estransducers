@@ -1,6 +1,5 @@
 import {produce,consume,Tag} from "../core"
 import * as Kit from "../kit"
-import * as R from "ramda"
 import * as T from "babel-types"
 import * as assert from "assert"
 
@@ -57,7 +56,7 @@ function markKeyIds(s) {
  * joins not computed MemberExpressions into a single variable 
  * if its object is const and not used anywhere else
  */
-export default R.pipe(
+export default Kit.pipe(
   markKeyIds,
   collectFuncDecls,
   function joinMemExprCollect(s) {
