@@ -42,7 +42,7 @@ export function* tempNames(s) {
 }
 
 /**
- * resets symbol number and value decl field 
+ * resets symbols decl map for resolving names
  * for new identifiers from transform passes,
  * the transform pass has to use sym field to identifier 
  * symbols in `Identifier` nodes
@@ -52,25 +52,49 @@ export const resetSym = Kit.pipe(
   function resetSym(si) {
     const sa = Kit.toArray(si)
     const s = Kit.auto(sa)
-    function walk(blockScope) {
-      for(const i of s.sub()) {
+    function id(i, blockScope) {
+      const {sym} = i
+      if (sym != null) {
+        if (i.decl == null) {
+          const fi = i.fieldInfo
+          i.decl = fi.declVar
+        }
+        //if (sym.num == null)
+        //  sym.num = symNum++
+        if (sym.orig != null)
+          sym.name = sym.orig
+        if (i.node.name == null)
+          i.node.name = sym.name
+        if (i.decl && blockScope != null)
+          blockScope.add(sym)
+      }
+    }
+    function walk(sw,blockScope) {
+      for(const i of sw) {
         if (i.enter) {
           switch(i.type) {
           case Tag.Identifier:
-            const {sym} = i.value
-            if (sym != null) {
-              if (i.value.decl == null) {
-                const fi = i.value.fieldInfo
-                i.value.decl = fi.declVar
+            id(i.value,blockScope)
+            break
+          case Tag.FunctionDeclaration:
+            const j = s.curLev()
+            if (j) {
+              id(j.value,blockScope)
+              Kit.skip(s.one())
+            }
+          case Tag.FunctionExpression:
+          case Tag.ObjectMethod:
+          case Tag.ClassMethod:
+          case Tag.ArrowFunctionExpression:
+            // parameters must be added to body's scope
+            const nscope = new Set()
+            for(let j; (j = s.curLev()) != null;) {
+              if (j.pos === Tag.body) {
+                s.take()
+                walk(s.sub(), j.value.decls = nscope)
+              } else {
+                walk(s.one(), nscope)
               }
-              //if (sym.num == null)
-              //  sym.num = symNum++
-              if (sym.orig != null)
-                sym.name = sym.orig
-              if (i.value.node.name == null)
-                i.value.node.name = sym.name
-              if (i.value.decl && blockScope != null)
-                blockScope.add(sym)
             }
             break
           case Tag.BlockStatement:
@@ -86,7 +110,7 @@ export const resetSym = Kit.pipe(
         }
       }
     }
-    walk()
+    walk(s)
     return sa
   })
 
