@@ -303,6 +303,14 @@ function setComputed(sym,prop,tys) {
   me.prop = Tag.computed
 }
 
+// TODO: remove in babel 7
+{
+  symInfo(Tag.ObjectMethod).fieldsMap
+    .set(Tag.params,symInfo(Tag.FunctionExpression).fieldsMap.get(Tag.params))
+  symInfo(Tag.ObjectMethod).fieldsMap
+    .set(Tag.key,symInfo(Tag.ObjectProperty).fieldsMap.get(Tag.key))
+}
+
 setComputed(Tag.MemberExpression,Tag.property,[Tag.Identifier])
 setComputed(Tag.ObjectProperty,Tag.key,
             [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])

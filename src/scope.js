@@ -10,7 +10,9 @@ symInfo(Tag.ClassDeclaration).funDecl = true
 symInfo(Tag.FunctionDeclaration).funDecl = true
 
 // String -> Sym
-export function newSym(name = "", strict = false, decl) {
+export function newSym(name, strict = false, decl) {
+  if (!name)
+    name = ""
   return { name,
            orig: name,
            id: `${name}_${curSymId++}`,
@@ -193,6 +195,7 @@ export function cloneSym(sym) {
  */
 export const assignSym = (report) => Kit.pipe(
   resetFieldInfo,
+//  Trace.all("ASI"),
   // collecting each declaration in each block before resolving
   // because function's may use the ones declared after
   function collectDecls(si) {
@@ -245,6 +248,8 @@ export const assignSym = (report) => Kit.pipe(
       for(const i of s.sub()) {
         if (i.enter) {
           switch(i.type) {
+          case Tag.ThisExpression:
+            break
           case Tag.ForStatement:
             {
               const nextSyms = []
@@ -279,14 +284,20 @@ export const assignSym = (report) => Kit.pipe(
               checkScope(i.value,nextSyms)
             }
             break
-          case Tag.FunctionExpression:
+          case Tag.ClassMethod:
+          case Tag.ObjectMethod:
+            const k = s.take()
+            assert.equal(k.pos, Tag.key)
+            if (!k.leave) {
+              walk(block,funcSyms,blockSyms,loop)
+              s.close(k)
+            }
           case Tag.ArrowFunctionExpression:
+          case Tag.FunctionExpression:
           case Tag.File:
           case Tag.FunctionDeclaration:
-          case Tag.ObjectMethod:
           case Tag.ClassDeclaration:
           case Tag.ClassExpression:
-          case Tag.ClassMethod:
             if (i.leave || s.curLev() == null)
               break
             const nextSyms = []
@@ -385,8 +396,8 @@ export const assignSym = (report) => Kit.pipe(
     const sa = Kit.toArray(si)
     const s = Kit.auto(sa)
     const root = s.first.value
-    function decls(scope,par) {
-      for(const i of s.sub()) {
+    function decls(sw,func,scope,par) {
+      for(const i of sw) {
         if (i.enter) {
           switch(i.type) {
           case Tag.Identifier:
@@ -428,25 +439,27 @@ export const assignSym = (report) => Kit.pipe(
                   scope.set(sym.name,sym)
               }
             }
-            decls(new Map(scope),npar)
+            decls(s.sub(),func,new Map(scope),npar)
             break
+          case Tag.ObjectMethod:
+            decls(s.one(),func,scope,par)
+          case Tag.ArrowFunctionExpression:
           case Tag.FunctionExpression:
           case Tag.File:
           case Tag.FunctionDeclaration:
-          case Tag.ObjectMethod:
           case Tag.ClassMethod:
-          case Tag.ArrowFunctionExpression:
+            func.hasArrows = i.type === Tag.ArrowFunctionExpression
             const nscope = new Map(par)
             for(const sym of par.values()) {
               nscope.set(sym.name,sym)
             }
-            decls(nscope,par)
+            decls(s.sub(),i.value,nscope,par)
             break
           }
         }
       }
     }
-    decls(new Map(),new Map())
+    decls(s,s.first.value,new Map(),new Map())
     return sa
   })
 

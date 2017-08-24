@@ -682,12 +682,9 @@ export function skip(s) {
           node = next
       }
     } catch(e) {
-      let msg = e.message
-      if (name)
-        msg += ` during ${name}`
-      node = e.esNode || node
-      node = babel.root.node
-      throw babel.root.hub.file.buildCodeFrameError(node, msg)
+      if (!e.esNode)
+        e.esNode = node
+      throw e
     }
   }
   return i.value
@@ -793,7 +790,7 @@ export function result(s,buf) {
     return i.value
   buf.push(i.value)
   const name = i.value.value && i.value.value.stageName
-  const babel = false // _opts.babel
+  const babel = _opts.babel
   // for debugging purposes, let the debugger catch the exception
   if (!babel) {
     for(;!(i = iter.next()).done;)
@@ -804,9 +801,9 @@ export function result(s,buf) {
     for(;!(i = iter.next()).done;)
       buf.push(i.value)
   } catch(e) {
-    if (e._skip)
+    if (e.esNode)
       throw e
-    let msg = e.message
+    let msg = e.origMessage = e.origMessage || e.message 
     if (name)
       msg += ` during ${name}`
     let node = e.esNode || i && i.value.node // || si._last
@@ -814,22 +811,15 @@ export function result(s,buf) {
       msg += " (the position is approximated)"
       for(const i of reverse(buf)) {
         node = i.value.node
-        if (node && (node.loc || node._loc)) {
-          const next = babel.root.hub.file.buildCodeFrameError(node, msg)
-          next._skip = true
-          throw next
-        }
+        if (node && (node.loc || node._loc))
+          e.esNode = node
       }
-      node = babel.root.node
+    } else
       e.esNode = node
-    }
-    const next = babel.root.hub.file.buildCodeFrameError(node, msg)
-    next._skip = true
-    throw next
+    throw e
   }
   return i.value
 }
-
 
 /** alias of the module's `tillLevel` */
 ExtIterator.prototype.tillLevel = function(level) {
@@ -1050,8 +1040,12 @@ export const babelBridge = curry(function babelBridge(pass,path,state) {
   _opts = Object.assign({args:Object.assign({},state.opts),
                          file:Object.assign(state.file.opts),
                          babel:{root:path,state}},
-                       _opts)
-  pass(produce({type:"File",program:path.node}))
+                        _opts)
+  try {
+    pass(produce({type:"File",program:path.node}))
+  } catch(e) {
+    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
+  }
   _opts = optSave
 })
 
