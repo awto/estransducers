@@ -3,67 +3,78 @@ import * as Scope from "./scope"
 import {produce,Tag,TypeInfo as TI,symbol,tok,resetFieldInfo} from "./core"
 import * as assert from "assert"
 
-export function* importRT(si) {
+/** 
+ * injects ES6 `import` or commonjs `require` 
+ * commonjs if option `modules` === 'commonjs'
+ * expects following fields:
+ *      type Value = Value & { 
+ *        rt: { importSyms: {syms:Sym[], ns: Sym, module:string} } }
+ *      type Sym = Sym & { importFrom: String } 
+ */
+export function* importSyms(si) {
   const s = Kit.auto(si)
   const {rt} = s.first.value
-  if ((!rt.importSyms || !rt.importSyms.length)
-      && (!rt.importNs || !rt.importNs.length))
-    return s
-  const mods = new Map()
-  for(const i of rt.importSyms) {
-    if (i.importFrom) {
-      let f = i.imports.get(i.importFrom)
-      if (f == null)
-        mods.set(i.importFrom, f = [])
-      f.push(i)
-    }
+  if (!rt.importSyms || !rt.importSyms.length) {
+    yield* s
+    return
   }
   yield* Kit.fileBody(s)
-  const commonjs = s.opts.module === "commonjs"
-  for(const [mn, syms] of mods) {
-    yield* s.templates(Tag.push,
-                       commonjs
-                       ? `const {$_} = require("${mn}")`
-                       : `import {$_} from "${mn}"`)
-    for(const sym of syms)
-      yield s.tok(Tag.push, Tag.Identifier, {sym})
-    yield* s.leave()
-  }
-  if (rt.importNs) {
-    for(const sym of rt.importNs)
+  const commonjs = s.opts.moduleKind === "commonjs"
+  for(const {syms,ns,module} of rt.importSyms) {
+    if (ns == null) {
+      const lab = s.label()
+      yield* s.template(Tag.push,
+                        commonjs
+                        ? `var $_ = require("${module}")`
+                        : `import $_ from "${module}"`)
+      yield s.enter(Tag.id, Tag.ObjectPattern)
+      yield s.enter(Tag.properties,Tag.Array)
+      for(const sym of syms) {
+        yield s.enter(Tag.push,Tag.ObjectProperty,{node:{shorthand:true}})
+        yield s.tok(Tag.key, Tag.Identifier, {node:{name:sym.orig}})
+        yield s.tok(Tag.value, Tag.Identifier, {decl:true,sym})
+        yield* s.leave()
+      }
+      yield* lab()
+    } else {
       yield* s.toks(Tag.push,
-                    s.opts.modules === "commonjs"
-                    ? `import * as $I from "${mn}"`
-                    : `const $I = require("${mn}")`,
-                    sym)
+                    commonjs
+                    ? `import * as $I from "${module}"`
+                    : `var $I = require("${module}")`,
+                    ns)
+    }
   }
   yield* s
 }
 
-const emptyArr = []
-
+/** 
+ * inlines runtime values
+ * expects: 
+ *      type Value = Value & { rt: { inline: {syms:Sym[],content:string}[] } }
+ * inlines JS content from all `inlineSources` looking up for 
+ * symbols in `inlineSym`
+ */
 export function* inline(si) {
   const s = Kit.auto(si)
   const {rt} = s.first.value
-  const syms = rt.inlineSyms || emptyArr
-  const sources = rt.inlineSources
-  if (!sources || !syms.sources) {
+  const inlines = rt.inlineSyms
+  if (!inlines || !inlines.length) {
     yield* s
     return
   }
-  const buf = []
-  const symsMap = {}
   function* getBody(si) {
     const s = Kit.auto(si)
     Kit.skip(s.till(i => i.pos === Tag.body && i.type === Tag.Array))
     yield* s.sub()
     Kit.skip(s)
   }
+  const buf = []
   const transf = Kit.pipe(Kit.parse,produce,Scope.prepare,getBody,Kit.toArray)
-  for(const i of syms)
-    symsMap[i.orig] = i
-  for(const i of sources) {
-    const p = transf(i)
+  for(const {syms,content} of inlines) {
+    const symsMap = {}
+    for(const i of syms)
+      symsMap[i.orig] = i
+    const p = transf(content)
     buf.push(p)
     for(const i of p) {
       if (i.enter) {
@@ -85,16 +96,10 @@ export function* inline(si) {
   yield* s
 }
 
-const modules = {}
-
-export function setModule(name, code) {
-  modules[name] = code
-}
-
+/** initializes empty `rt` structure */
 export function* init(si) {
   const [h,s] = Kit.la(si)
-  h.value.rt = {inlineSources:Object.values(modules),
-                importSyms:[],
+  h.value.rt = {importSyms:[],
                 importNs:[],
                 inlineSyms:[]}
   yield* s
