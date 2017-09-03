@@ -23,9 +23,13 @@ export function newSym(name, strict = false, decl) {
 
 export const undefinedSym = newSym("undefined", true)
 export const argumentsSym = newSym("arguments", true)
+export const ObjectSym = newSym("Object", true)
+export const ArraySym = newSym("Array", true)
 
 const globals = new Map([["undefined",undefinedSym],
-                         ["arguments",argumentsSym]])
+                         ["arguments",argumentsSym],
+                         ["Object",ObjectSym],
+                         ["Array",ArraySym]])
 
 /**
  * sets temporal `node.name` for each Identifier for debug dumps outputs
@@ -235,7 +239,7 @@ export const assignSym = (report) => Kit.pipe(
           sym.unordered = unordered
           sym.declScope = func
           sym.declBlock = block
-          sym.declLoop = sym.captLoop = unordered ? null : loop
+          sym.captLoop = sym.declLoop = unordered ? null : loop
           sym.param = null
           sym.func = null
           sym.decl = i
@@ -650,9 +654,10 @@ function solve(si) {
 
 export const prepare = assignSym(true)
 
+export const reset = assignSym(false)
+
 export const resolve = Kit.pipe(
-  resetSym,
-  assignSym(false),
+  reset,
   calcBlockRefs,
   solve)
 

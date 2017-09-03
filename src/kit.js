@@ -75,11 +75,9 @@ export class Lookahead extends ExtIterator {
     this.first = i.value
     this.opts = this.first.value && this.first.value.opts || _opts
     this._cur = i
-//    this._last = null
   }
   next(v) {
     const cur = this._cur
-//    this._last = cur.value
     if (!cur.done) {
       if (cur.value.value != null && cur.value.value.opts != null)
         this.opts = cur.value.value.opts
@@ -87,9 +85,8 @@ export class Lookahead extends ExtIterator {
     }
     return cur
   }
-//  last() { return this._last; }
   take(v) {
-    const cur = /*this._last =*/ this._cur
+    const cur = this._cur
     if (cur.done)
       return null
     if (cur.value.opts != null)
@@ -121,9 +118,6 @@ export class ArrayLookahead extends ExtIterator {
       this.opts = c.opts
     return c
   }
-//  last() {
-//    return this._cont[this._x-1]
-//  }
   cur() {
     return this._cont[this._x]
   }
@@ -1601,12 +1595,9 @@ export const cleanEmptyExprs = pipe(
  */
 export function pipe() {
   var args = arguments
-  var _debTrace = []
   return function pipeImpl(cur) {
-    for(let i = 0, len = args.length; i < len; ++i) {
-      _debTrace.push(cur)
+    for(let i = 0, len = args.length; i < len; ++i)
       cur = args[i](cur)
-    }
     return cur
   }
 }
