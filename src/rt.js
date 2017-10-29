@@ -19,7 +19,7 @@ export function* importSyms(si) {
     return
   }
   yield* Kit.fileBody(s)
-  const commonjs = s.opts.moduleKind === "commonjs"
+  const commonjs = s.opts.modules === "commonjs"
   for(const {syms,ns,module} of rt.importSyms) {
     if (ns == null) {
       const lab = s.label()
@@ -39,8 +39,8 @@ export function* importSyms(si) {
     } else {
       yield* s.toks(Tag.push,
                     commonjs
-                    ? `import * as $I from "${module}"`
-                    : `var $I = require("${module}")`,
+                    ? `var $I = require("${module}")`
+                    : `import * as $I from "${module}"`,
                     ns)
     }
   }

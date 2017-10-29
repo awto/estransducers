@@ -31,7 +31,7 @@ export function cg(ast, opts = {}) {
     res = generate(ast,opts,"").code
   } catch (e) {
     if (ast.type != null)
-      console.error(e.stack)
+      console.log("ERROR:",e.stack)
   }
   if (res != null) {
     return res
@@ -91,7 +91,7 @@ export function* verify(s) {
       if (ti.kind !== "ctrl")
         assert.equal(f.type,i.type)
       assert.equal(f.pos,i.pos)
-      assert.equal(f.value,i.value)
+      assert.ok(f.value === i.value)
     }
     yield i
   }
@@ -163,11 +163,18 @@ function* traceNodeImpl(prefix, s) {
 function* browserTraceImpl(prefix,s) {
   let level = 0
   let x = 0
-  console.log(`%c${pad(prefix)}%c`,
-              `background:#2B81AF;color:#fff;font-size:xx-large;
-              text-shadow:rgba(0, 0, 0, 0.5) 2px 2px 1px`,
-              "")
+  let first = true
   for(const i of s) {
+    if (first) {
+      first = false
+      let name = symName(i.type)
+      if (i.value.funcId)
+        name += ":" + i.value.id
+      console.log(`%c${pad(prefix+" " + name.match(/[A-Z]/g).join(""))}%c`,
+                  `background:#2B81AF;color:#fff;font-size:xx-large;
+                   text-shadow:rgba(0, 0, 0, 0.5) 2px 2px 1px`,
+                  "")
+    }
     const styles = []
     if (i.enter)
       level++
@@ -176,6 +183,7 @@ function* browserTraceImpl(prefix,s) {
     const tp = i.pos === i.type ? symName(i.type)
           :`${symName(i.pos)}:${symName(i.type)}`
     const descr = `${prefix}${tp}[${level}${clevel}]`
+    const idtxt = i.value.id ? `-${i.value.id}` : ""
     let ldescr
     if (i.pos === i.type) {
       ldescr = `${prefix}%c${symName(i.type)}%c[${level}${clevel}]`
@@ -238,7 +246,7 @@ function* browserTraceImpl(prefix,s) {
         styles.push(newTagStyle,"")
       }
     }
-    console.log(`%c${dir}%c ${ldescr}@${x}${commentsTxt} ${n}`,
+    console.log(`%c${dir}%c ${ldescr}@${x}${idtxt}${commentsTxt} ${n}`,
                 dirStyle,"",
                 ...styles,i.value)
     yield i

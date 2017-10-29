@@ -453,7 +453,7 @@ describe("closure conversion", function() {
           obj = {
             kk: new kk(this.ff, this)
           };
-          for (a of arr) {
+          for (this.j of arr) {
             this.ff.i += this.j + k;
           }
           obj.kk.call(obj, 10);
@@ -464,7 +464,7 @@ describe("closure conversion", function() {
           var j, gg, temp;
           gg = new _gg(this);
           this.i = 0, j = 0;
-          (temp = gg.call(undefined, j)).kk.call(temp, 1);
+          (temp = gg.call(void 0, j)).kk.call(temp, 1);
           gg.constr(0);
         });
         g.ff = new ff();
@@ -496,7 +496,7 @@ describe("closure conversion", function() {
       
       console.log([{num:2},{num:1},{num:3}].sort(function(a, b) { return a.num - b.num; }))`
               )).to.equal(pretty(`
-        var a, res, _i, k, j, temp;
+        var a, res, i, k, j, temp;
 
         var g = {};
         
@@ -535,13 +535,13 @@ describe("closure conversion", function() {
         console.time.call(console, "R");
         res = 0;
         
-        for (_i = 0; _i < 100000; _i++) {
-          k = a.call(undefined, _i);
+        for (i = 0; i < 100000; i++) {
+          k = a.call(void 0, i);
           
           for (j = 0; j < 10000; j++) {
-            k.call(undefined, j);
+            k.call(void 0, j);
           }
-          res = k.call(undefined, 10);
+          res = k.call(void 0, 10);
         }
         console.timeEnd.call(console, "R");
         console.log.call(console, "E", res);

@@ -163,21 +163,6 @@ for(const i in ALIAS_KEYS) {
   
 }
 
-
-/** Tag.Identifier not declaring any reference */
-const notDeclsPosSet = new Set([
-  Tag.label,
-  Tag.key,
-  Tag.imported,
-  Tag.exported,
-  Tag.label,
-  Tag.key,
-  Tag.meta,
-  Tag.property
-])
-
-const declsPosSet = new Set([Tag.id])
-
 for(const i in VISITOR_KEYS) {
   const nodeFields = NODE_FIELDS[i]
   const pos = Tag[i]
@@ -261,9 +246,7 @@ for(const i in VISITOR_KEYS) {
       lval,
       decl: (nt.has(Tag.VariableDeclaration) || nt.has(Tag.Declaration)),
       mod: lval, 
-      declVar: !expr && (
-        nt.has(Tag.Identifier) && !notDeclsPosSet.has(pos)
-          || declsPosSet.has(pos))
+      declVar: pos === Tag.id
     }
   }
 }
@@ -283,7 +266,7 @@ for(const i in Tag) {
   Tag[Tag[i]] = Tag[i]
 }
 
-function setComputed(sym,prop,tys) {
+function setComputed(sym,prop) {
   const me = symInfo(sym)
   me.propAlt = Object.assign(
     {},
@@ -303,21 +286,41 @@ function setComputed(sym,prop,tys) {
   me.prop = Tag.computed
 }
 
+setComputed(Tag.ObjectProperty,Tag.key)
+
 // TODO: remove in babel 7
 {
   symInfo(Tag.ObjectMethod).fieldsMap
     .set(Tag.params,symInfo(Tag.FunctionExpression).fieldsMap.get(Tag.params))
-  symInfo(Tag.ObjectMethod).fieldsMap
-    .set(Tag.key,symInfo(Tag.ObjectProperty).fieldsMap.get(Tag.key))
+  symInfo(Tag.ClassMethod).fieldsMap
+    .set(Tag.params,symInfo(Tag.FunctionExpression).fieldsMap.get(Tag.params))
+  const keyProp = symInfo(Tag.ObjectProperty).fieldsMap.get(Tag.key)
+  symInfo(Tag.ObjectMethod).fieldsMap.set(Tag.key,keyProp)
+  symInfo(Tag.ClassMethod).fieldsMap.set(Tag.key,keyProp)
+  symInfo(Tag.ClassProperty).fieldsMap.set(Tag.key,keyProp)
 }
 
-setComputed(Tag.MemberExpression,Tag.property,[Tag.Identifier])
-setComputed(Tag.ObjectProperty,Tag.key,
-            [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
-setComputed(Tag.ObjectMethod,Tag.key,
-            [Tag.Identifier, Tag.StringLiteral, Tag.NumericLiteral])
+symInfo(Tag.CatchClause).fieldsMap.get(Tag.param).declVar = true
+{
+  for(const i of [Tag.ImportNamespaceSpecifier,
+                  Tag.ImportSpecifier,
+                  Tag.ImportDefaultSpecifier])
+    symInfo(i).fieldsMap.get(Tag.local).declVar = true
+}
+setComputed(Tag.MemberExpression,Tag.property)
+setComputed(Tag.ObjectMethod,Tag.key)
+setComputed(Tag.ClassProperty,Tag.key)
+setComputed(Tag.ClassMethod,Tag.key)
 symInfo(Tag.UpdateExpression).fieldsMap.get(Tag.argument).mod = true
 symInfo(Tag.BlockStatement).block = true
+symInfo(Tag.SpreadElement).expr = true
+const assignmentOpEq = symInfo(Tag.AssignmentExpression)
+const assignmentOpDefault = Object.assign(
+    {},assignmentOpEq,
+    {fieldsMap:(new Map(assignmentOpEq.fieldsMap))
+     .set(Tag.left,
+          Object.assign({},assignmentOpEq.fieldsMap.get(Tag.left),{expr:true}))})
+
 {
   const me = symInfo(Tag.AssignmentExpression)
   me.propAlt = Object.assign(
@@ -328,22 +331,44 @@ symInfo(Tag.BlockStatement).block = true
           Object.assign({},me.fieldsMap.get(Tag.left),{expr:true}))})
   me.prop = Tag.operator
 }
+const assignmentPattern = symInfo(Tag.AssignmentPattern)
+const objectProperty = symInfo(Tag.ObjectProperty)
+const assignmentProperty = symbolDefFor("AssignmentProperty","node")
+const objectAssignmentPattern = symInfo(Tag.ObjectPattern)
+const objectPattern = Object.assign(
+  {},objectAssignmentPattern,
+  {fieldsMap:new Map(objectAssignmentPattern.fieldsMap)})
 {
-  // fixing patterns
+  const prop = objectAssignmentPattern.fieldsMap.get(Tag.properties)
+  const elem = Object.assign({},prop.elem,{declVar:true})
+  prop.elem.declVar = false
+  objectPattern.fieldsMap.set(
+    Tag.properties,
+    Object.assign({},prop,{elem,fieldsMap:new Map([[Tag.push,elem]])}))
+}
+const arrayAssignmentPattern = symInfo(Tag.ArrayPattern)
+const arrayPattern = Object.assign(
+  {},arrayAssignmentPattern,
+  {fieldsMap:new Map(arrayAssignmentPattern.fieldsMap)})
+{
+  const prop = arrayAssignmentPattern.fieldsMap.get(Tag.elements)
+  const elem = Object.assign({},prop.elem,{declVar:true})
+  prop.elem.declVar = false
+  arrayPattern.fieldsMap.set(
+    Tag.elements,
+    Object.assign({},prop,{elem,fieldsMap:new Map([[Tag.push,elem]])}))
+}
+{
+  assignmentPattern.fieldsMap.get(Tag.left).declVar = true
   const patField = symInfo(Tag.VariableDeclarator).fieldsMap.get(Tag.id)
-  const oprop = symInfo(Tag.ObjectProperty)
-  const aprop = symbolDefFor("AssignmentProperty","node")
-  aprop.esType = "ObjectProperty"
-  aprop.fieldsMap = new Map(oprop.fieldsMap)
-  aprop.fieldsMap.set(Tag.value,patField)
-  const op = symInfo(Tag.ObjectPattern)
-  const el = op.fieldsMap.get(Tag.properties).elem
-  el.decl = el.declVar = true
-  el.ti = aprop
-  const els = symInfo(Tag.ArrayPattern).fieldsMap.get(Tag.elements)
-  els.elem = patField
-  els.fieldsMap.set(Tag.push,patField)
-  symInfo(Tag.RestElement).fieldsMap.set(Tag.argument,patField)
+  assignmentProperty.esType = "ObjectProperty"
+  assignmentProperty.fieldsMap = new Map(objectProperty.fieldsMap)
+  assignmentProperty.fieldsMap.set(Tag.value,patField)
+  // TODO: Babel 7 has no RestProperty (remove the ifs)
+  if (Tag.RestElement)
+    symInfo(Tag.RestElement).fieldsMap.set(Tag.argument,patField)
+  if (Tag.RestProperty)
+    symInfo(Tag.RestProperty).fieldsMap.set(Tag.argument,patField)
 }
 
 function isNode(node) {
@@ -482,7 +507,7 @@ export function* reproduceNodes(s) {
 
 export function* resetFieldInfo(s) {
   const stack = []
-  for(const i of s) {
+  for(const i of /*require("./trace").lazy(*/s/*)*/) {
     if (i.enter) {
       let f = stack[stack.length-1]
       if (f && f.fieldsMap) {
@@ -494,14 +519,36 @@ export function* resetFieldInfo(s) {
         stack.push(i.value.fieldInfo)
         break
       case "node":
-        if (ti.prop != null && i.value.node != null) {
-          if (ti.prop === Tag.operator) {
-            if (i.value.node.operator !== "=")
-              ti = ti.propAlt
-          } else {
-            if (i.value.node.computed)
-              ti = ti.propAlt
-          }
+        // babel validator hacks
+        // TODO: own model description
+        switch(i.type) {
+        case Tag.ArrayPattern:
+          ti = f && f.declVar ? arrayPattern : arrayAssignmentPattern
+          break
+        case Tag.ObjectPattern:
+          ti = f && f.declVar ? objectPattern : objectAssignmentPattern
+          break
+        case Tag.AssignmentExpression:
+          ti = i.value.node.operator === "="
+            ? assignmentOpEq : assignmentOpDefault
+          break
+        case Tag.ObjectProperty:
+          if (f && f.declVar)
+            ti = assignmentProperty
+          break
+        case Tag.AssignmentPattern:
+          if (!f || !f.declVar)
+            ti = symInfo(Tag.AssignmentExpression)
+          break
+        case Tag.MemberExpression:
+        case Tag.ObjectMethod:
+        case Tag.ClassProperty:
+        case Tag.ClassMethod:
+        case Tag.ClassPrivateMethod:
+        case Tag.ClassPrivateProperty:
+          if (i.value.node.computed)
+            ti = ti.propAlt
+          break
         }
         stack.push(ti)
         break

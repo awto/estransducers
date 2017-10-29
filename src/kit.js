@@ -448,7 +448,7 @@ export function parse(jsCode) {
  *  - '=' - the string is JS expression
  *  - '*' - the string is a list of statements
  *  - '>' - variable declarator
- *  - otherwise it is considered to by a statement
+ *  - otherwise it is considered to be a statement
  * 
  * if in the code in `s` identifier starts with `$` it has special meaning
  * if next character is:
@@ -785,7 +785,8 @@ export function result(s,buf) {
   buf.push(i.value)
   const name = i.value.value && i.value.value.stageName
   const babel = _opts.babel
-  // for debugging purposes, let the debugger catch the exception
+  // for debugging purposes,
+  // let the debugger catch the exception in browser
   if (!babel) {
     for(;!(i = iter.next()).done;)
       buf.push(i.value)
@@ -805,8 +806,10 @@ export function result(s,buf) {
       msg += " (the position is approximated)"
       for(const i of reverse(buf)) {
         node = i.value.node
-        if (node && (node.loc || node._loc))
+        if (node && (node.loc || node._loc)) {
           e.esNode = node
+          break
+        }
       }
     } else
       e.esNode = node
@@ -1126,7 +1129,8 @@ export function makeExprPass(s) {
       const ti = typeInfo(j)
       if (ti.block) {
         yield s.enter(pos,Tag.CallExpression)
-        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,{node:{params:[]}})
+        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression)
+        yield s.tok(Tag.params,Tag.Array)
         yield* subst(Tag.body)
         yield* s.leave()
         yield s.tok(Tag.arguments,Tag.Array)
@@ -1134,7 +1138,8 @@ export function makeExprPass(s) {
       } else if (ti.stmt) {
         yield s.enter(pos,Tag.CallExpression)
         const lab = s.label()
-        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,{node:{params:[]}})
+        yield s.enter(Tag.callee,Tag.ArrowFunctionExpression)
+        yield s.tok(Tag.params,Tag.Array)
         yield s.enter(Tag.body,Tag.BlockStatement)
         yield s.enter(Tag.body,Tag.Array)
         yield* subst(Tag.push)
@@ -1245,6 +1250,7 @@ function adjustFieldTypeImpl(s) {
       if (i.enter) {
         const fi = i.value.fieldInfo || {}, ti = typeInfo(i)
         if (i.type === Tag.Array && fi.array
+            || !ti.stmt && !ti.block && !ti.expr
             || fi.stmt && ti.stmt
             || fi.expr && ti.expr
             || fi.block && ti.block
@@ -1300,7 +1306,8 @@ function adjustFieldTypeImpl(s) {
         if (fi.expr) {
           yield s.enter(i.pos,Tag.CallExpression)
           yield s.enter(Tag.callee,Tag.ArrowFunctionExpression,
-                        {node:{params:[],expression:true}})
+                        {node:{expression:true}})
+          yield s.tok(Tag.params,Tag.Array)
           if (!ti.block) {
             yield s.enter(Tag.body,Tag.BlockStatement)
             yield s.enter(Tag.body,Tag.Array)
@@ -1371,7 +1378,7 @@ export const select = curry(function select(fn,s) {
  * if `pred` returns true on `opts` field of some first element
  * wraps transforms `s` using `pass` otherwise returns s unchanged
  *
- *     (Opts -> boolean) -> (Toks -> Toks) -> (Toks -> Toks)? -> Toks -> Toks
+ *     (Value -> boolean) -> (Toks -> Toks) -> (Toks -> Toks)? -> Toks -> Toks
  */
 export const enableIf = curryN(2,function enableIf(pred,t,e,s) {
   if (s == null) {
@@ -1384,7 +1391,9 @@ export const enableIf = curryN(2,function enableIf(pred,t,e,s) {
     e = i => i
   const f = function(s) {
     const [h, sn] = la(s)
-    return pred(h.value.opts || _opts) ? t(sn) : e(sn)
+    if (!h.value.opts)
+      h.value.opts = _opts
+    return pred(h.value) ? t(sn) : e(sn)
   }
   return s != null ? f(s) : f
 })

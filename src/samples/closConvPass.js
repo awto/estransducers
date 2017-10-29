@@ -169,8 +169,10 @@ function* functToObj(si) {
           let pos = i.pos
           if (i.pos === Tag.left) {
             const j = s.take()
+            const k = s.take()
             yield s.tok(i.pos,Tag.Identifier,{sym:s.curLev().value.sym})
             Kit.skip(s.sub())
+            s.close(k)
             s.close(j)
             s.close(i)
             continue

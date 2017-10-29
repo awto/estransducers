@@ -130,8 +130,15 @@ function* applyComments(s) {
 }
 
 export const toConsole = Kit.curry(function toConsole(tag,s) {
+  s = Kit.auto(s)
+  const root = s.first.value
+  let name = symName(s.first.type).match(/[A-Z]/g).join("")
+  if (root.funcId)
+    name += ":" + root.funcId.id
   if (BROWSER_DEBUG)
-    console.group(`dump %c${tag}`,"color:orange;font-size:large")
+    console.groupCollapsed(`dump %c${tag} %c${name}`,
+                           "color:orange;font-size:large",
+                           "color:coral")
   else
     console.log(`dump ${tag}`)
   const col = Kit.pipe(convertCtrl,

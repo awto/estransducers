@@ -165,7 +165,7 @@ describe("generating new names", function() {
       .to.equal(pretty(function a() {
         var a = 10, b = 10, c, d, e, f, g, h,
             k, m, n, x, y, z, _a,
-            _b = _a, a1 = _b, a2 = a1; }))
+            _b = _a, a1 = _b, b1 = a1; }))
   })
   it("all new variable should have valid name 6", function() {
     expect(
@@ -203,13 +203,13 @@ describe("scope diagnostics", function() {
       let err 
       try {
         convert(`function a({a,b}) {
-           const {a,c} = b 
+           let {a,c} = b
          }`)
       } catch(e) {
         err = e
       }
       // TODO: expect.to (get rid of qunit-bdd)
-      expect(err.message).to.equal("Identifier a has already been declared")
+      expect(err && err.message).to.equal("Identifier a has already been declared")
       expect(convert(`function a({a,b}) { var {a,c} = b }`))
         .to.equal(`function a({ a, b }) { var { a: _a, c } = b; }`)
     })
@@ -223,7 +223,8 @@ describe("scope diagnostics", function() {
       } catch(e) {
         err = e
       }
-      expect(err.message).to.equal("Identifier a has already been declared")
+      expect(err && err.message)
+        .to.equal("Identifier a has already been declared")
     })
   })
 })
@@ -300,30 +301,16 @@ describe("converting const/let to var", function() {
           let a = 20;
           a++
           {
-            let a = 30, _a = 40, a1 = 50;
+            let a = 30, _a = 40, a1 = 50, a2 = 60;
             a++;
           }
         }
         a()
       }`)).to.equal(pretty(function a() {
-        function a() {
-          a();
-          {
-            var a2 = 10;
-            a2++;
-          }
-          var a3 = 20;
-          a3++;
-        }
-        {
-          var a2 = 20;
-          a2++;
-          {
-            var a3 = 30, _a = 40, a1 = 50;
-            a3++;
-          }
-        }
-        a();
+        function a() { _a(); { var a = 10; a++; } var _a = 20; _a++; }
+        { var a3 = 20; a3++;
+          { var a4 = 30, _a = 40, a1 = 50, a2 = 60; a4++; }
+        } a();
       }))
     })
     it("should keep names uniq 4", function() {
