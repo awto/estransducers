@@ -1250,7 +1250,7 @@ function adjustFieldTypeImpl(s) {
       if (i.enter) {
         const fi = i.value.fieldInfo || {}, ti = typeInfo(i)
         if (i.type === Tag.Array && fi.array
-            || !ti.stmt && !ti.block && !ti.expr
+            || i.type !== Tag.Array && !ti.stmt && !ti.block && !ti.expr
             || fi.stmt && ti.stmt
             || fi.expr && ti.expr
             || fi.block && ti.block

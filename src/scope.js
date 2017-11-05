@@ -246,7 +246,7 @@ export const assignSym = (report) => Kit.pipe(
             case Tag.Identifier:
               if (!k.value.fieldInfo.declVar)
                 break
-              const sym = id(k,nextSyms,unordered)
+              const sym = id(k,nextSyms,unordered,loop)
               if (sym && params) {
                 params.push(sym)
                 sym.param = param
