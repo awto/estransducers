@@ -71,8 +71,6 @@ export const resetSym = Kit.pipe(
           const fi = i.fieldInfo
           i.decl = fi.declVar
         }
-        //if (sym.num == null)
-        //  sym.num = symNum++
         if (sym.orig != null)
           sym.name = sym.orig
         if (i.node.name == null)
@@ -639,7 +637,7 @@ function solve(si) {
     for(const j of i.varRefs) {
       allIds.add(j)
       Kit.mapAdd(symsStore,j,i)
-      if (decls.has(j))
+      if ((j.hasDecl = decls.has(j)))
         Kit.mapPush(names,j.orig,j)
     }
     for(const [name,syms] of names) {
@@ -647,8 +645,14 @@ function solve(si) {
         Kit.mapPush(conflicts,name,{syms,block:i})
     }
   }
-  for(const j of allIds)
+  for(const j of allIds) {
     j.name = j.orig
+    if (!j.hasDecl && !j.strict && !j.global) {
+      j.name = `${j.name}_UNDECL_${j.num}`
+      console.warn(
+        `INTERNAL ERROR: not declared generated symbol name ${j.name}`)
+    }
+  }
   if (conflicts.size) {
     const table = []
     for(const [name,i] of conflicts) {
@@ -700,8 +704,11 @@ function solve(si) {
     }
   }
   for(const i of idToks) {
-    if (!i.sym.name)
+    if (!i.sym.name) {
       i.sym.name = `UNKNOWN_${i.sym.id}`
+      console.warn(
+        `INTERNAL ERROR: not resolved symbol name ${i.sym.name}`)
+    }
     i.node.name = i.sym.name || (i.sym.name = i.sym.orig)
   }
   return sa
