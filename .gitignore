@@ -8,3 +8,4 @@ tmp-*
 .tern-port
 /*.js
 /samples/*.js
+loose

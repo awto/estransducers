@@ -391,14 +391,15 @@ export function WithPeel(Super) {
     }
     /** see `Level` */
     *one() {
-      if (this._stack[0] !== vCloseTag)
+      if (this._stack[0] !== vCloseTag) {
         return (yield* super.one())
+      }
       return null
     }
     /** see `Level` */
     *sub() {
       if (this._stack[0] !== vCloseTag)
-        return (yield* super.sub())
+         return (yield* super.sub())
       return null
     }
     /** see `Level` */
@@ -1038,11 +1039,11 @@ export const babelBridge = curry(function babelBridge(pass,path,state) {
                          file:Object.assign(state.file.opts),
                          babel:{root:path,state}},
                         _opts)
-  try {
+//  try {
     pass(produce({type:"File",program:path.node}))
-  } catch(e) {
-    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
-  }
+//  } catch(e) {
+//    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
+//  }
   _opts = optSave
 })
 
@@ -1234,8 +1235,11 @@ export function removeEmptyBlocks(si) {
   return walk(s)
 }
 
-function adjustFieldTypeImpl(s) {
+function* adjustFieldTypeImpl(s) {
   s = auto(s)
+  yield s.peel()
+  yield* walk()
+  yield* s.leave()
   function* subst(pos,i) {
     if (i.leave) {
       yield s.tok(pos,i.type,i.value)
@@ -1254,7 +1258,7 @@ function adjustFieldTypeImpl(s) {
             || fi.stmt && ti.stmt
             || fi.expr && ti.expr
             || fi.block && ti.block
-            || i.type === Tag.VariableDeclaration && fi.decl)
+            || ti.decl && fi.decl)
         {
           yield i
           continue

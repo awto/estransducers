@@ -15,6 +15,7 @@ function calcClosCapt(si) {
   const sa = Kit.toArray(si)
   const s = Kit.auto(sa)
   const closureSym = s.first.value.closureSym = Scope.newSym("closure")
+  closureSym.global = true
   const rt = s.first.value.rt
   if (!s.opts.noRT)
     rt.inlineSyms.push({syms:[closureSym],

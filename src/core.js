@@ -314,6 +314,10 @@ setComputed(Tag.ClassMethod,Tag.key)
 symInfo(Tag.UpdateExpression).fieldsMap.get(Tag.argument).mod = true
 symInfo(Tag.BlockStatement).block = true
 symInfo(Tag.SpreadElement).expr = true
+symInfo(Tag.VariableDeclaration).decl = true
+symInfo(Tag.FunctionDeclaration).decl = true
+symInfo(Tag.ClassDeclaration).decl = true
+
 const assignmentOpEq = symInfo(Tag.AssignmentExpression)
 const assignmentOpDefault = Object.assign(
     {},assignmentOpEq,
@@ -507,7 +511,7 @@ export function* reproduceNodes(s) {
 
 export function* resetFieldInfo(s) {
   const stack = []
-  for(const i of /*require("./trace").lazy(*/s/*)*/) {
+  for(const i of s) {
     if (i.enter) {
       let f = stack[stack.length-1]
       if (f && f.fieldsMap) {

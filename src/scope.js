@@ -108,6 +108,7 @@ export const resetSym = Kit.pipe(
             }
             break
           case Tag.BlockStatement:
+          case Tag.SwitchStatement:
           case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:
@@ -318,6 +319,7 @@ export const assignSym = (report) => Kit.pipe(
               checkScope(i.value,nextSyms)
             }
             break
+          case Tag.SwitchStatement:
           case Tag.BlockStatement:
           case Tag.Program:
             {
@@ -473,6 +475,7 @@ export const assignSym = (report) => Kit.pipe(
             }
             break
           case Tag.BlockStatement:
+          case Tag.SwitchStatement:
           case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:

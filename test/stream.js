@@ -198,7 +198,7 @@ describe("hierarchical iterator",function() {
 
 describe("template",function() {
   const s = Kit.output()
-  it("should feel the placeholders", function() {
+  it("should fill the placeholders", function() {
     function* gen() {
       const s = Kit.output()
       const fpos = yield* s.template(Tag.top,`

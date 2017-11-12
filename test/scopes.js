@@ -115,57 +115,57 @@ describe("generating new names", function() {
   }
   it("all new variable should have valid name 1", function() {
     expect(
-      convert(function a() {
+      convert(`function a() {
         var a = 10, b = 10;
-      },["a","b","c","d","a"]))
-      .to.equal(pretty(function a() {
+      }`,["a","b","c","d","a"]))
+      .to.equal(pretty(`function a() {
       var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d;
-    }))
+    }`))
   })
   it("all new variable should have valid name 2", function() {
     expect(
-      convert(function a() {
+      convert(`function a() {
         var a = 10, b = 10;
-      },["a","b","c","d","a","a"]))
-      .to.equal(pretty(function a() {
+      }`,["a","b","c","d","a","a"]))
+      .to.equal(pretty(`function a() {
         var a = 10, b = 10, _a, _b = _a, c = _b, d = c, a1 = d, a2 = a1;
-      }))
+      }`))
   })
   it("all new variable should have valid name 3", function() {
     expect(
-      convert(function a() {
+      convert(`function a() {
         var a = 10, b = 10;
-      },["a","b","a",""]))
-      .to.equal(pretty(function a() {
+      }`,["a","b","a",""]))
+      .to.equal(pretty(`function a() {
         var a = 10, b = 10, _a, _b = _a, a1 = _b, c = a1;
-      }))
+      }`))
   })
   it("all new variable should have valid name 4", function() {
     expect(
-      convert(function a() {
+      convert(`function a() {
         var a = 10, b = 10;
         function c() {
           var d = 10, e = 10;
         }
         c()
-      },["a","b","a",""]))
-      .to.equal(pretty(function a() {
+      }`,["a","b","a",""]))
+      .to.equal(pretty(`function a() {
         var a = 10, b = 10, _a, _b = _a, a1 = _b, d = a1;
         function c() {
           var d = 10, e = 10, a, b = a, _a = b, c = _a;
         }
         c()
-      }))
+      }`))
   })
   it("all new variable should have valid name 5", function() {
     expect(
-      convert(function a() {
+      convert(`function a() {
         var a = 10, b = 10,c,d,e,f,g,h,k,m,n,x,y,z;
-      },["a","b","a",""]))
-      .to.equal(pretty(function a() {
+      }`,["a","b","a",""]))
+      .to.equal(pretty(`function a() {
         var a = 10, b = 10, c, d, e, f, g, h,
             k, m, n, x, y, z, _a,
-            _b = _a, a1 = _b, b1 = a1; }))
+            _b = _a, a1 = _b, b1 = a1; }`))
   })
   it("all new variable should have valid name 6", function() {
     expect(
@@ -243,7 +243,7 @@ describe("converting const/let to var", function() {
             a++;
           }
         }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         var a = 10;
         {
           var _a = 20;
@@ -253,7 +253,7 @@ describe("converting const/let to var", function() {
             a1++;
           }
         }
-      }))
+      }`))
     })
     it("should keep names uniq 2", function() {
       expect(convert(`function a() {
@@ -270,7 +270,7 @@ describe("converting const/let to var", function() {
           }
         }
         a()
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         function a() {
           a()
           var a = 10;
@@ -284,7 +284,7 @@ describe("converting const/let to var", function() {
           }
         }
         a()
-      }))
+      }`))
     })
     it("should keep names uniq 3", function() {
       expect(convert(`function a() {
@@ -306,12 +306,12 @@ describe("converting const/let to var", function() {
           }
         }
         a()
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         function a() { _a(); { var a = 10; a++; } var _a = 20; _a++; }
         { var a3 = 20; a3++;
           { var a4 = 30, _a = 40, a1 = 50, a2 = 60; a4++; }
         } a();
-      }))
+      }`))
     })
     it("should keep names uniq 4", function() {
       expect(convert(`function a() {
@@ -320,10 +320,10 @@ describe("converting const/let to var", function() {
           {
             let a = 10;
           }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         a();
         var a = 10;
-        { var _a = 10; } }))
+        { var _a = 10; } }`))
     })
     it("should keep names uniq 5", function() {
       expect(convert(`function a() {
@@ -332,13 +332,13 @@ describe("converting const/let to var", function() {
           let a = b+1
           console.log(a)
         }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         var a = [1,2,3];
         for (var b of a) {
           var _a = b+1;
           console.log(_a);
         }
-      }))
+      }`))
     })
     it("should keep names uniq 6", function() {
       expect(convert(`function a() {
@@ -398,7 +398,7 @@ describe("converting const/let to var", function() {
           a++;
         }
       }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         var a;
         var _a;
         var a1, a2, a3;
@@ -413,7 +413,7 @@ describe("converting const/let to var", function() {
             a1++;
           }
         }
-      }))
+      }`))
     })
     it("should keep names uniq 2", function() {
       expect(convert(`function a() {
@@ -422,7 +422,7 @@ describe("converting const/let to var", function() {
           let a = b
           console.log(a,b)
         }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         var a;
         var b;
         var _a;
@@ -431,7 +431,7 @@ describe("converting const/let to var", function() {
           _a = b;
           console.log(_a,b);
         }
-      }))
+      }`))
     })
     it("should keep names uniq 3", function() {
       expect(convert(`function a() {
@@ -443,7 +443,7 @@ describe("converting const/let to var", function() {
           const a = 2;
           b()
         }
-      }`)).to.equal(pretty(function a() {
+      }`)).to.equal(pretty(`function a() {
         var a;
         var b;
         var _a;
@@ -451,7 +451,7 @@ describe("converting const/let to var", function() {
           b = function b() { return _a || b(); };
           _a = 2; b();
         }
-      }))
+      }`))
     })
   })
 })
