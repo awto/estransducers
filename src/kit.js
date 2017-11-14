@@ -1638,4 +1638,19 @@ export function curry(fun,trace) {
   return curryN(fun.length,fun,trace)
 }
 
+/** console.time for generator `s` */
+export const time = curry(function*(name, s) {
+  console.time(name)
+  return (yield* s)
+})
+
+/** console.time for generator `s` */
+export const timeEnd = curry(function*(name, s) {
+  try {
+    return (yield* s)
+  } finally {
+    console.timeEnd(name)
+  }
+})
+
 

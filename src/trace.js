@@ -261,7 +261,9 @@ function* browserTraceImpl(prefix,s) {
 }
 
 function traceAllImpl(prefix,s) {
-  return [...verify(traceImpl(prefix,s))] 
+  return [...prefix[0] === "!"
+          ? traceImpl(prefix, s)
+          : verify(traceImpl(prefix,s))]
 }
 
 function traceArgs(impl) {
