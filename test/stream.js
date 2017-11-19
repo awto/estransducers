@@ -10,8 +10,7 @@ describe("lookahead iterator", function() {
   const COUNT = 1000
   it("should provide accesst to the next element", function() { 
     const buf = Array.from(Array(COUNT+1).keys())
-    const Stream = Kit.Stream({input:true})
-    const s = new Stream(buf)
+    const s = Kit.auto(buf)
     expect(s.cur()).to.equal(0)
     let res = 0
     for(const i of s) {
@@ -25,8 +24,7 @@ describe("lookahead iterator", function() {
   context("with array container", function() {
     it("should provide accesst to the next element", function() { 
       const buf = Array.from(Array(COUNT+1).keys())
-      const Stream = Kit.Stream({arr:true,input:true})
-      const s = new Stream(buf)
+      const s = Kit.auto(buf)
       expect(s.cur()).to.equal(0)
       let res = 0
       for(const i of s) {
@@ -52,8 +50,7 @@ function compact(str) {
 
 describe("scoped output", function() {
   function* gen() {
-    const Stream = Kit.Stream({output:true})
-    const s = new Stream()
+    const s = Kit.auto()
     const lab = s.label()
     yield s.enter(Tag.top,Tag.FunctionExpression)
     yield s.enter(Tag.params,Tag.Array)
@@ -70,7 +67,6 @@ describe("scoped output", function() {
 })
 
 describe("hierarchical iterator",function() {
-  const Stream = Kit.Stream({level:true,output:true})
   const prog = `
     function a() {
       const i = 10, j = 20
@@ -82,7 +78,7 @@ describe("hierarchical iterator",function() {
       console.log(k) 
     }`
   it("should be able to traverse sub-levels", function() {
-    const s = new Stream(produce(parse(prog)))
+    const s = Kit.auto(produce(parse(prog)))
     let cnt = 0
     expect(s.cur().type).to.equal(Tag.File)
     for(const i of s) {
@@ -130,8 +126,7 @@ describe("hierarchical iterator",function() {
   context("with peel",function() {
     it("should manage input levels", function() {
       let cnt = 0
-      const Stream = Kit.Stream({level:true,output:true,peel:true})
-      const s = new Stream(produce(parse(prog)))
+      const s = Kit.auto(produce(parse(prog)))
       expect(s.cur().type).to.equal(Tag.File)
       const i = [...(function* (){
         const exit = s.label()
@@ -173,7 +168,7 @@ describe("hierarchical iterator",function() {
         let k=i+j;
         console.log(k);
       }`))
-      let sn = new Stream(i)
+      let sn = Kit.auto(i)
       for(const j of sn) {
         if (j.pos === Tag.test) {
           cnt++
@@ -183,7 +178,7 @@ describe("hierarchical iterator",function() {
           expect([...sn.sub()].length).to.equal(32)
         }
       }
-      sn = new Stream(i)
+      sn = Kit.auto(i)
       for(const j of sn) {
         if (j.pos === Tag.test) {
           cnt++
@@ -197,10 +192,10 @@ describe("hierarchical iterator",function() {
 
 
 describe("template",function() {
-  const s = Kit.output()
+  const s = Kit.auto()
   it("should fill the placeholders", function() {
     function* gen() {
-      const s = Kit.output()
+      const s = Kit.auto()
       const fpos = yield* s.template(Tag.top,`
         function $_(a,$_) {
           $_

@@ -47,7 +47,7 @@ export const inject = Kit.curry(function* matchInject(pattern, si) {
   const plen = pats.length
   const plens = pats.map(i => i.length)
   assert.equal(plens.filter(v => v === 0).length,0)
-  const s = Kit.lookahead(si)
+  const s = Kit.auto(si)
   const activePos = []
   const activeTok = []
   const activePh = []

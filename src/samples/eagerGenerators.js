@@ -4,7 +4,6 @@ import * as T from "babel-types"
 import * as assert from "assert"
 import * as Trace from "../trace"
 
-const Stream = Kit.Stream({peel:true})
 const SpecVars = symbol("SpecVars","ctrl")
 
 const specNames = {

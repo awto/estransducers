@@ -107,12 +107,12 @@ export const resetSym = Kit.pipe(
               }
             }
             break
+          case Tag.Program:
           case Tag.BlockStatement:
           case Tag.SwitchStatement:
           case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:
-          case Tag.Program:
           case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:
             walk(i.value.decls = new Set())
@@ -319,9 +319,9 @@ export const assignSym = (report) => Kit.pipe(
               checkScope(i.value,nextSyms)
             }
             break
+          case Tag.Program:
           case Tag.SwitchStatement:
           case Tag.BlockStatement:
-          case Tag.Program:
             {
               const nextSyms = []
               walk(func,i.value,funcSyms,funcVars || new Map(),nextSyms,loop)
@@ -361,8 +361,8 @@ export const assignSym = (report) => Kit.pipe(
               walk(func,block,funcSyms,funcVars,blockSyms,loop)
               s.close(k)
             }
-          case Tag.FunctionExpression:
           case Tag.File:
+          case Tag.FunctionExpression:
           case Tag.FunctionDeclaration:
             if (!i.leave && s.curLev()) {
               const nextSyms = []
@@ -640,8 +640,9 @@ function solve(si) {
     for(const j of i.varRefs) {
       allIds.add(j)
       Kit.mapAdd(symsStore,j,i)
-      if ((j.hasDecl = decls.has(j)))
+      if ((j.hasDecl = decls.has(j))) {
         Kit.mapPush(names,j.orig,j)
+      }
     }
     for(const [name,syms] of names) {
       if (syms.length > 1 || !name.length || reserved.has(name))

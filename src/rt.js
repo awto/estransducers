@@ -71,9 +71,9 @@ export function* inline(si) {
   const buf = []
   const transf = Kit.pipe(Kit.parse,produce,Scope.prepare,getBody,Kit.toArray)
   for(const {syms,content} of inlines) {
-    const symsMap = {}
+    const symsMap = new Map()
     for(const i of syms)
-      symsMap[i.orig] = i
+      symsMap.set(i.orig,i)
     const p = transf(content)
     buf.push(p)
     for(const i of p) {
@@ -81,11 +81,12 @@ export function* inline(si) {
         const {node} = i.value
         node.loc = node.start = node.end = null
         if (i.type === Tag.Identifier) {
-          const sym = symsMap[node.name]
+          const sym = symsMap.get(node.name)
           if (sym)
             i.value.sym = sym
-          else if (i.value.sym)
+          else if (i.value.decl && i.value.sym) {
             i.value.sym.strict = false
+          }
         }
       }
     }

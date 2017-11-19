@@ -1,5 +1,5 @@
 import * as assert from "assert"
-import {produce,consume,Tag,enter,resetFieldInfo,
+import {produce as produceImpl,consume,Tag,enter,resetFieldInfo,
         leave,tok,symbol,symInfo,typeInfo,removeNulls
        } from "./core"
 import * as T from "babel-types"
@@ -7,6 +7,38 @@ import {parse as babelParse} from "babylon"
 
 const BROWSER_DEBUG = typeof window !== "undefined" && window.chrome
 let _opts = {}
+
+let leanWrap
+
+function produce(node,pos) {
+  return produceImpl(node,pos,_opts.ctor)
+}
+
+function LeanIterator(iter) {
+  this.value = void 0
+  this.done = false
+  this.iter = iter[Symbol.iterator]()
+}
+
+LeanIterator.prototype[Symbol.iterator] = function() { return this.iter }
+LeanIterator.prototype.step = function step(v) {
+  var next = this.iter.next(v)
+  this.done = next.done
+  this.value = next.value
+  return this
+}
+  
+if (Symbol.leanIterator) {
+  leanWrap = function leanWrap(cont) {
+    return cont[Symbol.leanIterator]
+      ? cont[Symbol.leanIterator]()
+      : new LeanIterator(cont)
+  }
+} else {
+  leanWrap = function leanWrap(cont) {
+    return new LeanIterator(cont)
+  }
+}
 
 /** runs `fun` and reset global options after its exit */
 export function optsScope(fun) {
@@ -35,406 +67,8 @@ export function setOpts(opts) {
   _opts = opts
 }
 
-/**
- * adds `take` function to ES6 iterators interface
- * children classes may implement one of `take` or `next` methods
- */
-export class ExtIterator {
-  [Symbol.iterator]() { return this }
-  /**
-   * ES6 Iterator interface `next`
-   */
-  next(v) {
-    const c = this.take(v)
-    return {value:c,done:c == null}
-  }
-  /**
-   * same as `next` but returns either next value or null if done
-   */
-  take(v) {
-    const c = this.next(v)
-    return c.done ? null : c.value
-  }
-  constructor(cont) {
-    this._cont = cont
-  }
-}
-
-/** 
- * iterators wrapper keeping a single element lookahead, which may be accessed
- * with `cur` method
- *
- * the iterator may be shared
- */
-export class Lookahead extends ExtIterator {
-  constructor(cont) {
-    super(cont)
-    this._inner = cont[Symbol.iterator]()
-    let i = this._inner.next()
-    assert.ok(!i.done,"input iterator should be not-empty")
-    this.first = i.value
-    this.opts = this.first.value && this.first.value.opts || _opts
-    this._cur = i
-  }
-  next(v) {
-    const cur = this._cur
-    if (!cur.done) {
-      if (cur.value.value != null && cur.value.value.opts != null)
-        this.opts = cur.value.value.opts
-      this._cur = this._inner.next(v)
-    }
-    return cur
-  }
-  take(v) {
-    const cur = this._cur
-    if (cur.done)
-      return null
-    if (cur.value.opts != null)
-      this.opts = cur.value.opts
-    this._cur = this._inner.next(v)
-    return cur.value
-  }
-  cur() { return this._cur.done ? undefined : this._cur.value }
-}
-
-/** same as `Lookahead` but optimized for Array's input */
-export class ArrayLookahead extends ExtIterator {
-  constructor(cont) {
-    super(cont)
-    assert.ok(cont.length > 0,"input iterator should be not-empty")
-    this._x = 0
-    this.first = cont[0]
-    this.opts = this.first.value && this.first.value.opts || _opts
-  }
-  next(v) {
-    const c = this._cont[this._x++]
-    if (c != null && c.value != null && c.value.opts != null)
-      this.opts = c.value.opts
-    return {value:c,done:c == null}
-  }
-  take(v) {
-    const c = this._cont[this._x++]
-    if (c != null && c.opts != null)
-      this.opts = c.opts
-    return c
-  }
-  cur() {
-    return this._cont[this._x]
-  }
-}
-
-
-const ctrlTok = Symbol("ctrlTok")
-const ctrlTokGen = Symbol("ctrlTokGen")
-const storedTok = Symbol("storedTok")
-
-/** iterator's wrapper proiding tokens output method */
-export const Output = (Super) => class Output extends Super {
-  constructor(cont) {
-    super(cont)
-    this._stack = []
-  }
-  /** smart constructor for a token */
-  valCtor (pos,type,value) {
-    let node = null
-    if (value == null) { 
-      if (type != null && typeof type !== "symbol") {
-        if (type.node != null) {
-          value = type
-          node = value.node
-          type = null
-        } else if (type.type != null) {
-          node = type
-          value = {node}
-          type = null
-        } else if (value == null) {
-          value = type
-          type = null
-        }
-      }
-      if (value == null)
-        value = {}
-    } else
-      node = value.node
-    if (type == null) {
-      if (value != null && value.typeInfo != null) {
-        type = value.typeInfo.sym
-      } else if (node != null && node.type != null) {
-        type = Tag[node.type]
-      } else {
-        if (symInfo(pos).kind === "ctrl")
-          type = pos
-      }
-    }
-    assert.ok(type,"couldn't guess type")
-    if (node == null) {
-      value.node = node =
-        type === Tag.Array ? [] : type === Tag.Null ? null : {}
-    }
-    if (!value.opts)
-      value.opts = this.opts
-    return [pos,type,value]
-  }
-  /** 
-   * outputs tokens from parsed template
-   * see module `toks` function for details 
-   */
-  *toks(pos,node,...syms) {
-    yield* toks(pos,node,...syms)
-  }
-  /** outputs opening tag */
-  enter(pos,type,value) {
-    [pos,type,value] = this.valCtor(pos,type,value)
-    this._stack.unshift({$:storedTok,
-                         tok:{enter:false,leave:true,
-                              pos:pos,type:type,value:value}})
-    return {enter:true,leave:false,type,pos,value}
-  }
-  /** outputs terminal tag */
-  tok(pos,type,value) {
-    [pos,type,value] = this.valCtor(pos,type,value)
-    return {enter:true,leave:true,type,pos,value}
-  }
-  /** outputs closing tag doing other actions stored in the stack */
-  *leave() {
-    let f
-    while((f=this._stack.shift())) {
-      switch(f.$) {
-      case ctrlTok:
-        if (f.run(this))
-          return
-        break
-      case ctrlTokGen:
-        if (yield* f.run(this))
-          return
-        break
-      default:
-        yield f.tok
-        return f.tok
-      }
-    }
-  }
-  /** 
-   * gets a mark (function) to close all tags opened 
-   * after the function is called 
-   */
-  label() {
-    const pos = this._stack.length
-    const t = this
-    return function*() {
-      const sub = t._stack.splice(0,t._stack.length - pos)
-      for(const i of sub) {
-        switch(i.$) {
-        case ctrlTok:
-          i.run(t)
-          break
-        case ctrlTokGen:
-          yield* i.run(t)
-          break
-        default:
-          yield i.tok
-        }
-      }
-    }
-  }
-}
-
-/** iterator's wrapper adding tree's level tracking functionality */
-export function Level(Super) {
-  function* one(t) {
-    const c = t.cur()
-    if (c == null || !c.enter)
-      return null
-    const exit = t.level
-    c.value.stageName = t.first.value.stageName
-    let i
-    for(i of t) {
-      yield i
-      if (exit >= t.level)
-        return i
-    }
-    return i
-  }
-  function* sub(t) {
-    const c = t.cur()
-    if (c == null || !c.enter)
-      return null
-    c.value.stageName = t.first.value.stageName
-    const exit = t.level
-    let i
-    for(i of t) {
-      yield i
-      if (exit >= t.level) {
-        const c = t.cur()
-        if (c == null || !c.enter || exit > t.level)
-          return i
-      }
-    }
-    return i
-  }
-  return class Level extends Super {
-    constructor(cont) {
-      super(cont)
-      this.level = 0
-    }
-    next(v) {
-      const c = super.next(v)
-      if (c.done)
-        return c
-      const t = c.value
-      if (t.enter)
-        this.level++
-      if (t.leave)
-        this.level--
-      return c
-    }
-    take(v) {
-      const c = super.take(v)
-      if (c == null)
-        return c
-      if (c.enter)
-        this.level++
-      if (c.leave)
-        this.level--
-      return c
-    }
-    /** 
-     * returns an iterator, if next tag is opening the iterator will 
-     * output all tokens until it is closed, or empty otherwise
-     */
-    one() { return one(this) }
-    /** 
-     * returns an iterator to traverse all tokens until exiting from 
-     * the current level
-     */
-    sub() { return sub(this) }
-    /** gets next tag if it is in the current level or null otherwise */
-    curLev() {
-      const v = this.cur()
-      if (!v || !v.enter)
-        return null
-      return v
-    }
-    /** 
-     * outputs all tokens until token with position `pos` 
-     * on the current level, returns the tag if found, it doesn't 
-     * remove the tag from the original iterator
-     */
-    *untilPos(pos) {
-      var i
-      while((i = this.curLev()) != null && i.pos !== pos)
-        yield* one(this)
-      return i
-    }
-
-    /** same as `untilPos` but takes the tag from the original stream */
-    *findPos(pos) {
-      const i = yield* this.untilPos(pos)
-      if (i != null)
-        this.take()
-      return i
-    }
-
-    /** same as `findPos` but also outputs the found tag */
-    *toPos(pos) {
-      const p = yield* this.findPos(pos)
-      assert.ok(p)
-      yield p
-      return p
-    }
-  }
-}
-
-/** extends iterator with `peel` function (see its doc) */
-export function WithPeel(Super) {
-  // means we are to skip next tag from input because it is in the stack already
-  const skipTag = {$:ctrlTok,run(t) { t.take(); },t:"skip"}
-  // virtual close (already closed in token)
-  const vCloseTag = {$:ctrlTok,run() {},t:"close"}
-  return class WithPeel extends Super {
-    constructor(cont) {
-      super(cont)
-    }
-    /** 
-     * - if `i` is undefined reads a token from the stream
-     * - makes an opening tag (copied from the read one or i) and returns it
-     * - save closing tag into a stack to output it after leaving its level
-     */
-    peel(i) {
-      if (i == null) 
-        i = this.take()
-      assert.ok(i.enter)
-      const res = this.enter(i.pos,i.type,i.value)
-      this._stack.unshift(i.leave ? vCloseTag : skipTag)
-      return res
-    }
-    /** 
-     * looks a `pos` tag in the input and returns it, 
-     * also output its peel
-     */
-    *peelTo(pos) {
-      assert.notEqual(this._stack[0],vCloseTag)
-      const i = yield *this.findPos(pos)
-      assert.ok(i);
-      yield this.peel(i);
-      return i
-    }
-    /** 
-     * same us `peel` without parameters but don't crashes 
-     * if there is nothing to peel (returns undefined)
-     */
-    peelOpt() {
-      const v = this.cur()
-      if (!v || !v.enter)
-        return null
-      return this.peel()
-    }
-    /** see `Level` */
-    *one() {
-      if (this._stack[0] !== vCloseTag) {
-        return (yield* super.one())
-      }
-      return null
-    }
-    /** see `Level` */
-    *sub() {
-      if (this._stack[0] !== vCloseTag)
-         return (yield* super.sub())
-      return null
-    }
-    /** see `Level` */
-    *findPos(pos) {
-      if (this._stack[0] !== vCloseTag)
-        return (yield* super.findPos(pos))
-      return null
-    }
-    /** peels `i` outputs it, outputs all inner  */
-    *copy(i) {
-      yield this.peel(i);
-      yield* this.sub();
-      yield* this.leave();
-    }
-    /** copies everything till closing of open tag `i` */
-    *tillClose(i) {
-      for(const j of this) {
-        yield j
-        if (j.value == i.value)
-          return j
-      }
-    }
-    /** 
-     * consumes next tag if `i` is not closing one
-     * crashes for debugging purposes if the tag is not closing tag of `i`
-     */
-    close(i) {
-      if (!i.leave) {
-        const j = this.take()
-        assert.ok(i.value === j.value)
-        return j
-      }
-      return null
-    }
-  }
+export function getOpts() {
+  return _opts
 }
 
 const memo = new Map()
@@ -542,125 +176,9 @@ export function* toks(pos,s,...syms) {
     yield* replace(clone(produce(s,pos)))
 }
 
-/** adds templated output functionality to iterator */
-export function Template(Super) {
-  const templateTok = {$:ctrlTokGen,
-                       *run(t) {
-                         yield* t._tstack.shift()
-                         return true
-                       }}
-  return class Template extends Super {
-    constructor(cont) {
-      super(cont)
-      this._tstack = []
-    }
-    /** 
-     * same as `toks` but extends formats with `$_`/'$E` identifier to mark 
-     * a position where output stream must be stopped, the position is a 
-     * result of the function, to continue emitting use `refocus`
-     * to exit the template use `leave`
-     * in expression statements $E focuses only the expression, while `$_` is for 
-     * the statement, in other contexts they do matches the same
-     */
-    *template(pos,node,...syms) {
-      if (node.substr != null)
-        node = toArray(toks(pos,node,...syms))
-      this._stack.unshift(templateTok)
-      this._tstack.unshift(node)
-      return (yield* this.refocus())
-    }
-    /** emits current template stream till next `$_`/`$E` */
-    *refocus() {
-      const arr = this._tstack[0]
-      while(arr.length) {
-        const f = arr.shift()
-        if (f.enter) {
-          switch(f.type) {
-          case Tag.ExpressionStatement:
-            const n = arr[0]
-            if (n != null
-                && n.type === Tag.Identifier
-                && n.value.node.name === "$_")
-            {
-              while(arr.length && arr.shift().value !== f.value) {}
-              return f.pos
-            }
-            break
-          case Tag.Identifier:
-            if (f.type === Tag.Identifier) {
-              const n = f.value.node.name
-              if (n === "$_" || n === "$E") {
-                while(arr.length && arr.shift().value !== f.value) {}
-                return f.pos
-              }
-            }
-            break
-          }
-        }
-        yield f
-      }
-      throw new Error("next placeholder is not found")
-    }
-  }
-}
-
-/** 
- * returns an iterator depending on facilities requested in `opts` 
- *    opts: {input: boolean, 
- *           output: boolean,
- *           level: boolean, 
- *           peel: boolean,
- *           template: boolean}
- */
-export function Stream(opts) {
-  if (opts == null)
-    opts = {}
-  let Iterator = opts.input || opts.level || opts.peel
-      ? (opts.arr ? ArrayLookahead : Lookahead)
-      : NoInput
-  if (opts.peel || opts.level)
-    Iterator = Level(Iterator)
-  if (opts.template || opts.output || opts.peel)
-    Iterator = Output(Iterator)
-  if (opts.peel)
-    Iterator = WithPeel(Iterator)
-  if (opts.template)
-    Iterator = Template(Iterator)
-  return Iterator
-}
-
-export const LookaheadArrStream = Stream({arr:true,input:true})
-export const LookaheadStream = Stream({input:true})
-export function lookahead(s) {
-  // return Array.isArray(s) ? new LookaheadArrStream(s) : new LookaheadStream(s)
-  return new LookaheadStream(s)
-}
-
-export const LevelStream = Stream({level:true})
-export const LevelArrStream = Stream({level:true,arr:true})
-export function levels(s) {
-  //  return Array.isArray(s) ? new LevelStream(s) : new LevelArrStream(s)
-  return new LevelStream(s)
-}
-
-export const AutoStream = Stream({peel:true,template:true})
-export const AutoArrStream = Stream({peel:true,template:true,arr:true})
-export function auto(s) {
-  //  return Array.isArray(s) ? new AutoArrStream(s) : new AutoStream(s)
-  return new AutoStream(s)
-}
-
-
-export class NoInput {}
-export const OutputStream = Template(Output(NoInput))
-export function output() {
-  return new OutputStream()
-}
-
 /** runs iterable `s` and ignores its output, returns its result */
 export function skip(s) {
-  const iter = s[Symbol.iterator]()
-  let i = iter.next()
+  let i = leanWrap(s).step()
   if (i.done)
     return i.value
   let node = i.value.node
@@ -668,10 +186,10 @@ export function skip(s) {
   const babel = _opts.babel
   const name = i.value.value.stageName
   if (!babel) {
-    for(;!(i = iter.next()).done;) {}
+    for(;!(i = i.step()).done;) {}
   } else {
     try {
-      for(;!(i = iter.next()).done;) {
+      for(;!(i = i.step()).done;) {
         const next = i.value.node
         if (next && (next._loc || next.loc))
           node = next
@@ -697,9 +215,8 @@ export function setPos(i,pos) {
 
 /** changes position on a first level of Iterable `s` */
 export function* repos(s,pos) {
-  const iter = s[Symbol.iterator]()
-  let i, level = 0
-  while(!(i = iter.next()).done) {
+  let i = leanWrap(s), level = 0
+  while(!(i = i.step()).done) {
     const v = i.value
     if (v.enter)
       level++
@@ -713,12 +230,11 @@ export function* repos(s,pos) {
 
 /** probably faster version of `reposOne` if there is only one child */
 export function* reposOne(s,pos) {
-  const iter = s[Symbol.iterator]()
-  let i, p = iter.next()
-  if (p.done)
-    return p.value
-  p = setPos(p.value,pos)
-  for(;!(i = iter.next()).done;p = i.value)
+  let i = leanWrap(s).step()
+  if (i.done)
+    return i.value
+  let p = setPos(i.value,pos)
+  for(;!(i = i.step()).done;p = i.value)
     yield p
   yield setPos(p,pos)
   return i.value
@@ -779,8 +295,7 @@ export function toArray(s) {
  * and returns iterable result
  */
 export function result(s,buf) {
-  const iter = s[Symbol.iterator]()
-  let i = iter.next()
+  let i = leanWrap(s).step()
   if (i.done)
     return i.value
   buf.push(i.value)
@@ -789,12 +304,12 @@ export function result(s,buf) {
   // for debugging purposes,
   // let the debugger catch the exception in browser
   if (!babel) {
-    for(;!(i = iter.next()).done;)
+    for(;!(i = i.step()).done;)
       buf.push(i.value)
     return i.value
   }
   try {
-    for(;!(i = iter.next()).done;)
+    for(;!(i = i.step()).done;)
       buf.push(i.value)
   } catch(e) {
     if (e.esNode)
@@ -817,11 +332,6 @@ export function result(s,buf) {
     throw e
   }
   return i.value
-}
-
-/** alias of the module's `tillLevel` */
-ExtIterator.prototype.tillLevel = function(level) {
-  return tillLevel(level,this)
 }
 
 /**
@@ -916,7 +426,6 @@ export function* till(pred, s) {
   }
   return null
 }
-ExtIterator.prototype.till = function(pred) { return till(pred,this); }
 
 /** 
  * copies the stream until `pred` returns true for next token 
@@ -934,9 +443,6 @@ export const find = curry(function* find(pred, s) {
   return false
 })
 
-/** alias of module's find */
-ExtIterator.prototype.find = function(pred) { return find(pred,this); }
-
 export const Opts = symbol("Options")
 export const UpdateOpts = symbol("MergeOptions")
 
@@ -946,21 +452,42 @@ export function* concat(...args) {
     yield* i
 }
 
+/** like `concat` but with its last argument application curried */
+export function prepend(...args) {
+  return function*(s) {
+    for(const i of args)
+      yield* i
+    yield* s
+  }
+}
 
 /** shares single iterator between several uses */
 export function share(s) {
-  const i = s[Symbol.iterator]()
-  return {
-    [Symbol.iterator] () {
+  let i = leanWrap(s)
+  const res = {
+    [Symbol.iterator]() {
       return {
         next(v) {
-          return i.next(v)
+          i = i.step()
+          return {value:i.value,done:i.done}
         }
       }
     }
   }
+  if (Symbol.leanIterator) {
+    res[Symbol.leanIterator] = function()  {
+      return {
+        step(v) {
+          i = i.step(v)
+          return this
+        }
+      }
+    }
+  }
+  return res
 }
 
+/** to be removed */
 export const wrap = curry(function* wrap(name,f,s) {
   const si = auto(s)
   const iter = f(si)[Symbol.iterator]()
@@ -1033,17 +560,17 @@ export const checkpoint = curry(function(name,s) {
 /**
  * babel plugin visitor methods, typically to be applied only to Program node
  */
-export const babelBridge = curry(function babelBridge(pass,path,state) {
+export const babelBridge = curry(function babelBridge(pass,path,state,ctor) {
   const optSave = _opts
   _opts = Object.assign({args:Object.assign({},state.opts),
                          file:Object.assign(state.file.opts),
                          babel:{root:path,state}},
                         _opts)
-//  try {
+  try {
     pass(produce({type:"File",program:path.node}))
-//  } catch(e) {
-//    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
-//  }
+  } catch(e) {
+    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
+  }
   _opts = optSave
 })
 
@@ -1085,25 +612,6 @@ export function* tee(s,buf) {
     buf.push(i)
   }
   return buf
-}
-
-/** generates error referring with `node` position */
-ExtIterator.prototype.error = function(msg,node) {
-  if (this._name != null)
-    msg += " during " + this._name
-  const e = new SyntaxError(msg)
-  if (node)
-    e.esOrigNode = node
-  if (!node || !node._loc && !node.loc) {
-    for(const i of this) {
-      node = i.value.node
-      if(node && (node.loc || node._loc)) {
-        e.esNode = node
-        return e
-      }
-    }
-  }
-  return e
 }
 
 export const makeExpr = symbol("makeExpr")
@@ -1360,8 +868,8 @@ export function* cons(a, s) {
  *   `Iterable<A> -> [A, Iterable<A>]`  
  */
 export function la(s) {
-  const i = s[Symbol.iterator]()
-  const v = i.next().value
+  const i = leanWrap(s).step()
+  const v = i.value
   return [v, cons(v,i)]
 }
 
@@ -1653,4 +1161,439 @@ export const timeEnd = curry(function*(name, s) {
   }
 })
 
+/** 
+ * iterators wrapper keeping a single element lookahead, which may be accessed
+ * with `cur` method
+ *
+ * the iterator may be shared
+ */
+export function Wrapper(cont) {
+  this.value = void 0
+  if (cont) {
+    const iter = this._inner = (leanWrap(cont)).step()
+    const i = iter.value
+    //  assert.ok(!iter.done,"input iterator should be not-empty")
+    this.done = iter.done
+    this.first = i
+    this.opts = i.value && i.value.opts || _opts
+  } else
+    this.opts = getOpts()
+  this._stack = []
+  this._tstack = []
+  this.level = 0
+}
 
+const AFp = Wrapper.prototype
+
+if (Symbol.leanIterator)
+  AFp[Symbol.leanIterator] = function() { return this }
+
+AFp[Symbol.iterator] = function() { return this }
+
+AFp.pure = function(v) {
+  this.value = v
+  this.done = true
+  return this
+}
+
+AFp.step = function() {
+  if (this._inner.done)
+    return this.pure()
+  const t = this.value = this._inner.value
+  if (t.value.opts)
+    this.opts = t.value.opts
+  else
+    t.value.opts = this.opts
+  this._inner = this._inner.step()
+  if (t.enter)
+    this.level++
+  if (t.leave)
+    this.level--
+  return this
+}
+
+/** ES Iterator's interface `next` */
+AFp.next = function() {
+  this.step()
+  return {value:this.value,done:this.done}
+}
+
+/**
+ * same as `next` but returns either next value or null if done
+ */
+AFp.take = function() {
+  this.step()
+  return this.done ? void 0 : this.value
+}
+
+AFp.cur = function() { return this._inner.value }
+
+/** smart constructor for a token */
+AFp.valCtor = function(pos,type,value) {
+  let node = null
+  if (value == null) { 
+    if (type != null && typeof type !== "symbol") {
+      if (type.node != null) {
+        value = type
+        node = value.node
+        type = null
+      } else if (type.type != null) {
+          node = type
+        value = {node}
+        type = null
+      } else if (value == null) {
+        value = type
+        type = null
+      }
+    }
+    if (value == null)
+      value = {}
+  } else
+    node = value.node
+  if (type == null) {
+    if (value != null && value.typeInfo != null) {
+      type = value.typeInfo.sym
+    } else if (node != null && node.type != null) {
+      type = Tag[node.type]
+    } else {
+      if (symInfo(pos).kind === "ctrl")
+        type = pos
+    }
+  }
+  assert.ok(type,"couldn't guess type")
+  if (node == null) {
+    value.node = node =
+      type === Tag.Array ? [] : type === Tag.Null ? null : {}
+  }
+  if (!value.opts)
+    value.opts = this.opts
+  return [pos,type,value]
+}
+
+/** 
+ * outputs tokens from parsed template
+ * see module `toks` function for details 
+ */
+AFp.toks = toks
+
+const ctrlTok = Symbol("ctrlTok")
+const ctrlTokGen = Symbol("ctrlTokGen")
+const storedTok = Symbol("storedTok")
+const templateTok = {$:ctrlTokGen,
+                     *run(t) {
+                       yield* t._tstack.shift()
+                       return true
+                     }}
+
+const skipTag = {$:ctrlTok,run(t) { t.take(); },t:"skip"}
+const vCloseTag = {$:ctrlTok,run() {},t:"close"}
+
+/** outputs opening tag */
+AFp.enter = function(p,t,v) {
+  const [pos,type,value] = this.valCtor(p,t,v)
+  const res = {enter:true,leave:false,pos,type,value}
+  this._stack.unshift({$:storedTok,
+                       tok:{enter:false,leave:true,
+                            pos,type,value}})
+  return res
+}
+
+/** outputs terminal tag */
+AFp.tok = function tok(p,t,v) {
+  const [pos,type,value] = this.valCtor(p,t,v)
+  return {enter:true,leave:true,pos,type,value}
+}
+
+/** outputs closing tag doing other actions stored in the stack */
+AFp.leave = function*() {
+  let f
+  while((f=this._stack.shift())) {
+    switch(f.$) {
+    case ctrlTok:
+      if (f.run(this))
+        return
+      break
+    case ctrlTokGen:
+      if (yield* f.run(this))
+        return
+      break
+    default:
+      yield f.tok
+      return f.tok
+    }
+  }
+}
+
+/** 
+ * gets a mark (function) to close all tags opened 
+ * after the function is called 
+ */
+AFp.label = function() {
+  const pos = this._stack.length
+  const t = this
+  return function*() {
+    const sub = t._stack.splice(0,t._stack.length - pos)
+    for(const i of sub) {
+      switch(i.$) {
+      case ctrlTok:
+        i.run(t)
+        break
+      case ctrlTokGen:
+        yield* i.run(t)
+        break
+      default:
+        yield i.tok
+      }
+    }
+  }
+}
+
+function* one(t) {
+  const c = t.cur()
+  if (c == null || !c.enter)
+    return null
+  const exit = t.level
+  c.value.stageName = t.first.value.stageName
+  let i
+  for(i of t) {
+    yield i
+    if (exit >= t.level)
+      return i
+  }
+  return i
+}
+
+function* sub(t) {
+  const c = t.cur()
+  if (c == null || !c.enter)
+    return null
+  c.value.stageName = t.first.value.stageName
+  const exit = t.level
+  let i
+  for(i of t) {
+    yield i
+    if (exit >= t.level) {
+      const c = t.cur()
+      if (c == null || !c.enter || exit > t.level)
+        return i
+    }
+  }
+  return i
+}
+
+/** gets next tag if it is in the current level or null otherwise */
+AFp.curLev = function() {
+  const v = this._inner.value
+  if (!v || !v.enter)
+    return null
+  return v
+}
+
+/** 
+ * outputs all tokens until token with position `pos`
+ * on the current level, returns the tag if found, it doesn't
+ * remove the tag from the original iterator
+ */
+AFp.untilPos = function*(pos) {
+  var i
+  while((i = this.curLev()) != null && i.pos !== pos)
+    yield* one(this)
+  return i
+}
+
+/** same as `findPos` but also outputs the found tag */
+AFp.toPos = function*(pos) {
+  const p = yield* this.findPos(pos)
+  assert.ok(p)
+  yield p
+  return p
+}
+
+/** 
+ * - if `i` is undefined reads a token from the stream
+ * - makes an opening tag (copied from the read one or i) and returns it
+ * - save closing tag into a stack to output it after leaving its level
+ */
+AFp.peel = function(i) {
+  if (i == null) 
+    i = this.take()
+  assert.ok(i.enter)
+  const res = this.enter(i.pos,i.type,i.value)
+  this._stack.unshift(i.leave ? vCloseTag : skipTag)
+  return res
+}
+
+/** 
+ * looks a `pos` tag in the input and returns it, 
+ * also output its peel
+ */
+AFp.peelTo = function*(pos) {
+  assert.notEqual(this._stack[0],vCloseTag)
+  const i = yield *this.findPos(pos)
+      assert.ok(i);
+  yield this.peel(i);
+  return i
+}
+
+/** 
+ * same us `peel` without parameters but don't crashes 
+ * if there is nothing to peel (returns undefined)
+ */
+AFp.peelOpt = function() {
+  const v = this.cur()
+  if (!v || !v.enter)
+    return null
+  return this.peel()
+}
+
+/** 
+ * returns an iterator, if next tag is opening the iterator will 
+ * output all tokens until it is closed, or empty otherwise
+ */
+AFp.one = function*() {
+  if (this._stack[0] !== vCloseTag) {
+    return (yield* one(this))
+  }
+  return null
+}
+
+/** 
+ * returns an iterator to traverse all tokens until exiting from 
+ * the current level
+ */
+AFp.sub = function*() {
+  if (this._stack[0] !== vCloseTag)
+    return (yield* sub(this))
+  return null
+}
+
+/** same as `untilPos` but takes the tag from the original stream */
+AFp.findPos = function*(pos) {
+  if (this._stack[0] !== vCloseTag) {
+    const i = yield* this.untilPos(pos)
+    if (i != null)
+      this.take()
+    return i
+  }
+  return null
+}
+
+/** peels `i` outputs it, outputs all inner  */
+AFp.copy = function*(i) {
+  if (!i)
+    i = this.take(i)
+  yield i
+  if (!i.leave) {
+    yield* this.sub()
+    const j = this.take()
+    assert.ok(i.value === j.value)
+    j.type = i.type
+    j.pos = i.pos
+    yield j
+  }
+}
+
+/** copies everything till closing of open tag `i` */
+AFp.tillClose = function*(i) {
+  for(const j of this) {
+    yield j
+    if (j.value == i.value)
+      return j
+  }
+}
+
+/** 
+ * consumes next tag if `i` is not closing one
+ * crashes for debugging purposes if the tag is not closing tag of `i`
+ */
+AFp.close = function(i) {
+  if (!i.leave) {
+    const j = this.take()
+    assert.ok(i.value === j.value)
+    return j
+  }
+  return null
+}
+
+/** 
+ * same as `toks` but extends formats with `$_`/'$E` identifier to mark 
+ * a position where output stream must be stopped, the position is a 
+ * result of the function, to continue emitting use `refocus`
+ * to exit the template use `leave`
+ * in expression statements $E focuses only the expression, while `$_` is for 
+ * the statement, in other contexts they do matches the same
+ */
+AFp.template = function*(pos,node,...syms) {
+  if (node.substr != null)
+    node = toArray(toks(pos,node,...syms))
+  this._stack.unshift(templateTok)
+  this._tstack.unshift(node)
+  return (yield* this.refocus())
+}
+
+/** emits current template stream till next `$_`/`$E` */
+AFp.refocus = function*() {
+  const arr = this._tstack[0]
+  while(arr.length) {
+    const f = arr.shift()
+    if (f.enter) {
+      switch(f.type) {
+      case Tag.ExpressionStatement:
+        const n = arr[0]
+        if (n != null
+            && n.type === Tag.Identifier
+            && n.value.node.name === "$_")
+        {
+          while(arr.length && arr.shift().value !== f.value) {}
+          return f.pos
+        }
+        break
+      case Tag.Identifier:
+        if (f.type === Tag.Identifier) {
+          const n = f.value.node.name
+          if (n === "$_" || n === "$E") {
+            while(arr.length && arr.shift().value !== f.value) {}
+            return f.pos
+          }
+        }
+        break
+      }
+    }
+    yield f
+  }
+  throw new Error("next placeholder is not found")
+}
+
+AFp.till = function(pred) { return till(pred,this) }
+
+/** alias of module's find */
+AFp.find = function(pred) { return find(pred,this); }
+
+/** generates error referring with `node` position */
+AFp.error = function(msg,node) {
+  if (this._name != null)
+    msg += " during " + this._name
+  const e = new SyntaxError(msg)
+  if (node)
+    e.esOrigNode = node
+  if (!node || !node._loc && !node.loc) {
+    for(const i of this) {
+      node = i.value.node
+      if(node && (node.loc || node._loc)) {
+        e.esNode = node
+        return e
+      }
+    }
+  }
+  return e
+}
+
+/** alias of the module's `tillLevel` */
+AFp.tillLevel = function(level) {
+  return tillLevel(level,this)
+}
+
+/** adds utility funcitons to iterable object `cont` */
+export function auto(cont) {
+  return new Wrapper(cont)
+}

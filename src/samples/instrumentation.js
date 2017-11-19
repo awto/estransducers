@@ -1,7 +1,6 @@
 import {Tag} from "../core"
 import * as Kit from "../kit"
 import * as Trace from "../trace"
-import * as T from "babel-types"
 import * as assert from "assert"
 
 export default Kit.pipe(
@@ -18,7 +17,7 @@ export default Kit.pipe(
               && i.value.node.name === "arguments") {
             fv.hasArgs = true
             Kit.skip(s.copy(i))
-            yield s.tok(i.pos,T.Identifier("e$y$arguments"))
+            yield s.tok(i.pos,Tag.Identifier,{node:{name:"e$y$arguments"}})
             continue
           }
           break
@@ -26,7 +25,7 @@ export default Kit.pipe(
           if (fv) {
             fv.hasThis = true
             Kit.skip(s.copy(i))
-            yield s.tok(i.pos,T.Identifier("e$y$this"))
+            yield s.tok(i.pos,Tag.Identifier,{node:{name:"e$y$this"}})
           }
           continue
         case Tag.Class:
@@ -75,10 +74,11 @@ export default Kit.pipe(
             yield s.enter(Tag.push,Tag.ReturnStatement)
             yield s.enter(Tag.argument,Tag.CallExpression)
             yield s.tok(Tag.callee,
-                        T.identifier(n.generator ? "e$y$prof$g" : "e$y$prof"))
+                        Tag.Identifier,
+                        {node:{name:(n.generator ? "e$y$prof$g" : "e$y$prof")}})
             yield s.enter(Tag.arguments,Tag.Array)
-            yield s.tok(Tag.push,T.stringLiteral(nm))
-            yield s.tok(Tag.push,T.stringLiteral(ln))
+            yield s.tok(Tag.push,Tag.StringLiteral,{node:{value:nm}})
+            yield s.tok(Tag.push,Tag.StringLiteral,{node:{value:ln}})
             yield s.enter(Tag.push,Tag.FunctionExpression,
                           {node:{params:[],generator:n.generator}})
             n.generator = false

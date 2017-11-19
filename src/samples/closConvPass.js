@@ -23,7 +23,7 @@ function calcClosCapt(si) {
                           path.join(__dirname,"closConvRT.js"),"utf-8")
                        })
   function walk(root,sw) {
-    const decls = root.decls = []
+    const decls = root.clDecls = []
     const sym = root.closSym
           = Scope.newSym(root.node.id && root.node.id.name || "fn")
     const closDeps = new Set()
@@ -81,7 +81,7 @@ function replaceCalls(si) {
         case Tag.FunctionExpression:
           yield i
           i.value.ctxSym = thisSym
-          yield* walk(s.sub(),i.value.decls)
+          yield* walk(s.sub(),i.value.clDecls)
           continue
         case Tag.NewExpression:
         case Tag.CallExpression:
@@ -126,7 +126,7 @@ function replaceCalls(si) {
       yield i
     }
   }
-  return walk(s,s.first.value.decls)
+  return walk(s,s.first.value.clDecls)
 }
 
 function* functToObj(si) {
@@ -241,7 +241,7 @@ function* functToObj(si) {
 
 function substIds(si) {
   const s = Kit.auto(si)
-  function* emitDecls({decls,argumentsSym,ctxSym}) {
+  function* emitDecls({clDecls:decls,argumentsSym,ctxSym}) {
     const locs = []
     const params = []
     for(const i of decls) {

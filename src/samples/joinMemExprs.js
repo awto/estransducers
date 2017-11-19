@@ -6,7 +6,7 @@ import * as assert from "assert"
 //TODO:
 function collectFuncDecls(s) {
   const sa = Kit.toArray(s)
-  const sl = Kit.levels(sa)
+  const sl = Kit.auto(sa)
   function walk() {
     for(const i of sl.sub()) {
       if (i.enter) {
@@ -23,7 +23,7 @@ function collectFuncDecls(s) {
 }
 
 function markKeyIds(s) {
-  const sl = Kit.levels(s)
+  const sl = Kit.auto(s)
   function* walk(sw) {
     for(const i of sw) {
       yield i
@@ -61,7 +61,7 @@ export default Kit.pipe(
   collectFuncDecls,
   function joinMemExprCollect(s) {
     const sa = Kit.toArray(s)
-    const sl = Kit.levels(sa)
+    const sl = Kit.auto(sa)
     function walk(dir) {
       for(const i of sl.sub()) {
         if (i.enter) {
