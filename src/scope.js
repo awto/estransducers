@@ -474,20 +474,18 @@ export const assignSym = (report) => Kit.pipe(
               }
             }
             break
+          case Tag.Program:
           case Tag.BlockStatement:
           case Tag.SwitchStatement:
           case Tag.CatchClause:
           case Tag.ForStatement:
           case Tag.ForInStatement:
-          case Tag.Program:
           case Tag.ForAwaitStatement:
           case Tag.ForOfStatement:
             const bscope = new Map(scope)
             for(const sym of i.value.decls) {
-              if (sym.strict) {
-                // if (sym.unordered)
-                  bscope.set(sym.name,sym)
-              }
+              if (sym.strict)
+                bscope.set(sym.name,sym)
             }
             decls(s.sub(),func,bscope)
             break

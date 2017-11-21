@@ -1,6 +1,6 @@
 import * as assert from "assert"
 import {produce as produceImpl,consume,Tag,enter,resetFieldInfo,
-        leave,tok,symbol,symInfo,typeInfo,removeNulls
+        leave,tok,symbol,symInfo,typeInfo,removeNulls,isSymbol,
        } from "./core"
 import * as T from "babel-types"
 import {parse as babelParse} from "babylon"
@@ -560,17 +560,17 @@ export const checkpoint = curry(function(name,s) {
 /**
  * babel plugin visitor methods, typically to be applied only to Program node
  */
-export const babelBridge = curry(function babelBridge(pass,path,state,ctor) {
+export const babelBridge = curry(function babelBridge(pass,path,state) {
   const optSave = _opts
   _opts = Object.assign({args:Object.assign({},state.opts),
                          file:Object.assign(state.file.opts),
                          babel:{root:path,state}},
                         _opts)
-  try {
+//  try {
     pass(produce({type:"File",program:path.node}))
-  } catch(e) {
-    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
-  }
+//  } catch(e) {
+//    throw path.hub.file.buildCodeFrameError(e.esNode, e.message)
+//  }
   _opts = optSave
 })
 
@@ -1172,7 +1172,7 @@ export function Wrapper(cont) {
   if (cont) {
     const iter = this._inner = (leanWrap(cont)).step()
     const i = iter.value
-    //  assert.ok(!iter.done,"input iterator should be not-empty")
+    assert.ok(!iter.done,"input iterator should be not-empty")
     this.done = iter.done
     this.first = i
     this.opts = i.value && i.value.opts || _opts
@@ -1202,8 +1202,6 @@ AFp.step = function() {
   const t = this.value = this._inner.value
   if (t.value.opts)
     this.opts = t.value.opts
-  else
-    t.value.opts = this.opts
   this._inner = this._inner.step()
   if (t.enter)
     this.level++
@@ -1232,7 +1230,7 @@ AFp.cur = function() { return this._inner.value }
 AFp.valCtor = function(pos,type,value) {
   let node = null
   if (value == null) { 
-    if (type != null && typeof type !== "symbol") {
+    if (type != null && !isSymbol(type)) {
       if (type.node != null) {
         value = type
         node = value.node
@@ -1276,9 +1274,9 @@ AFp.valCtor = function(pos,type,value) {
  */
 AFp.toks = toks
 
-const ctrlTok = Symbol("ctrlTok")
-const ctrlTokGen = Symbol("ctrlTokGen")
-const storedTok = Symbol("storedTok")
+const ctrlTok = {$:"ctrlTok"}
+const ctrlTokGen = {$:"ctrlTokGen"}
+const storedTok = {$:"storedTok"}
 const templateTok = {$:ctrlTokGen,
                      *run(t) {
                        yield* t._tstack.shift()
@@ -1291,6 +1289,7 @@ const vCloseTag = {$:ctrlTok,run() {},t:"close"}
 /** outputs opening tag */
 AFp.enter = function(p,t,v) {
   const [pos,type,value] = this.valCtor(p,t,v)
+  assert.ok(pos && type && value)
   const res = {enter:true,leave:false,pos,type,value}
   this._stack.unshift({$:storedTok,
                        tok:{enter:false,leave:true,
@@ -1409,7 +1408,7 @@ AFp.toPos = function*(pos) {
   return p
 }
 
-/** 
+/**
  * - if `i` is undefined reads a token from the stream
  * - makes an opening tag (copied from the read one or i) and returns it
  * - save closing tag into a stack to output it after leaving its level

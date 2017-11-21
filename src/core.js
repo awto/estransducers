@@ -6,18 +6,20 @@ const SYMBOLS_IMPL = "sym"
 const GLOBAL_SYMBOLS = SYMBOLS_IMPL === "sym"
 const OBJ_SYMBOLS  = SYMBOLS_IMPL === "obj"
 const STR_SYMBOLS = SYMBOLS_IMPL === "str"
-
+const NUM_SYMBOLS = SYMBOLS_IMPL === "num"
 let nameCount = 0
-const symbols = new Map()
+const symbols = NUM_SYMBOLS ? [] : new Map()
 //TODO: fields used only with a single type
 // const fieldTypes = new Map()
 
 export const symInfo = OBJ_SYMBOLS
   ? function symInfo(sym) { return sym }
+  : NUM_SYMBOLS ? function symInfo(sym) { return symbols[sym] }
   : function symInfo(sym) { return symbols.get(sym) }
 
 export const isSymbol
   = OBJ_SYMBOLS ? function(sym) { return sym && sym.kind != null }
+  : NUM_SYMBOLS ? function(sym) { return typeof sym === "number" }
   : STR_SYMBOLS ? function(sym) { return sym.substr != null }
   : function (sym) { return typeof sym === "symbol" }
 
@@ -31,7 +33,7 @@ export const symName
   : GLOBAL_SYMBOLS ? Symbol.keyFor
   : function symName(s) { return symInfo(s).name }
 
-const symDict = []
+const symDict = {}
 
 export const newSymbol
   = OBJ_SYMBOLS ? function newSymbol(n) {
@@ -42,6 +44,14 @@ export const newSymbol
                                         prop:null})
     }
   : STR_SYMBOLS ? function(v) { return v }
+  : NUM_SYMBOLS ? function(n) {
+      const x = ++nameCount
+      return (symDict[n] || (symDict[n] = {sym:x,
+                                           name:null,
+                                           kind:null,
+                                           x,
+                                           prop:null})).sym
+    }
   : GLOBAL_SYMBOLS ? Symbol.for
   : Symbol
 
@@ -60,24 +70,34 @@ export function fieldInfo(type,field) {
   return e.fieldsMap.get(field)
 }
 
-export const symbol = OBJ_SYMBOLS
-  ? function symbol(name,kind = "ctrl") {
+export const symbol =
+  OBJ_SYMBOLS ? function symbol(name,kind = "ctrl") {
     const res = {
       sym:null,
       name,
       kind,
-      x:nameCount++,
+      x:++nameCount,
       prop: null
     }
     res.sym = res
     return symDict[name] = res
+  } : NUM_SYMBOLS ? function symbol(name,kind = "ctrl") {
+    const res = newSymbol(name)
+    symbols[res] = {
+      sym:res,
+      name,
+      kind,
+      x:res,
+      prop: null
+    }
+    return res
   } : function symbol(name,kind = "ctrl") {
     const res = newSymbol(name)
     symbols.set(res,{
       sym:res,
       name,
       kind,
-      x:nameCount++,
+      x:++nameCount,
       prop: null
     })
     return res
@@ -88,7 +108,7 @@ export const symbolDefFor = OBJ_SYMBOLS
     let sym = Tag[name]
     if (sym == null) {
       Tag[name] = sym = symDict[name]
-        = { sym,name,kind,x:nameCount++, expr: false,
+        = { sym,name,kind,x:++nameCount, expr: false,
             block: false, key: false,
             lval: false, decl: false, func: false }
       if (kind === "node")
@@ -98,11 +118,28 @@ export const symbolDefFor = OBJ_SYMBOLS
       assert.equal(kind, sym.kind, `for ${name}`)
     }
     return sym
+  } : NUM_SYMBOLS ? function symbolDefFor(name, kind) {
+    let sym = Tag[name], def
+    if (sym == null) {
+      Tag[name] = sym = newSymbol(name)
+      def = { sym,name,kind,x:sym, expr: false,
+              block: false,
+              key: false,
+              lval: false, decl: false, func: false }
+      if (kind === "node")
+        def.esType = name
+      symbols[sym] = def
+    } else {
+      def = symInfo(sym)
+      assert.ok(def)
+      assert.equal(kind, def.kind, `for ${name}`)
+    }
+    return def
   } : function symbolDefFor(name, kind) {
     let sym = Tag[name], def
     if (sym == null) {
       Tag[name] = sym = newSymbol(name)
-      def = { sym,name,kind,x:nameCount++, expr: false,
+      def = { sym,name,kind,x:++nameCount,expr: false,
               block: false,
               key: false,
               lval: false, decl: false, func: false }
@@ -382,6 +419,7 @@ function isNode(node) {
 }
 
 export function enter(pos,type,value) {
+  assert.ok(pos && type && value)
   return {enter:true,leave:false,pos,type,value}
 }
 
