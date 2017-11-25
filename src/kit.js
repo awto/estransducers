@@ -1200,7 +1200,7 @@ AFp.step = function() {
   if (this._inner.done)
     return this.pure()
   const t = this.value = this._inner.value
-  if (t.value.opts)
+  if (t.value && t.value.opts)
     this.opts = t.value.opts
   this._inner = this._inner.step()
   if (t.enter)
