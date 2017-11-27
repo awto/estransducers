@@ -28,10 +28,10 @@ LeanIterator.prototype.step = function step(v) {
   return this
 }
   
-if (Symbol.leanIterator) {
+if (Symbol.effectfulIterator) {
   leanWrap = function leanWrap(cont) {
-    return cont[Symbol.leanIterator]
-      ? cont[Symbol.leanIterator]()
+    return cont[Symbol.effectfulIterator]
+      ? cont[Symbol.effectfulIterator]()
       : new LeanIterator(cont)
   }
 } else {
@@ -474,8 +474,8 @@ export function share(s) {
       }
     }
   }
-  if (Symbol.leanIterator) {
-    res[Symbol.leanIterator] = function()  {
+  if (Symbol.effectfulIterator) {
+    res[Symbol.effectfulIterator] = function()  {
       return {
         step(v) {
           i = i.step(v)
@@ -1185,8 +1185,8 @@ export function Wrapper(cont) {
 
 const AFp = Wrapper.prototype
 
-if (Symbol.leanIterator)
-  AFp[Symbol.leanIterator] = function() { return this }
+if (Symbol.effectfulIterator)
+  AFp[Symbol.effectfulIterator] = function() { return this }
 
 AFp[Symbol.iterator] = function() { return this }
 
