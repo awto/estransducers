@@ -161,7 +161,7 @@ export function* toks(pos,s,...syms) {
             i.value.node.name = (i.value.sym = syms.shift()).name
             break
           default:
-            if (!isNaN(rest))
+            if (rest.length && !isNaN(rest))
               i.value.node.name = (i.value.sym = syms[rest-1]).name
           }
         }
