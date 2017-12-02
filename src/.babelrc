@@ -2,10 +2,7 @@
   "env": {
     "development": {
       "plugins": [["babel-plugin-transform-es2015-modules-commonjs",
-                   {"loose":true}]]
-    },
-    "temp": {
-      presets: ["@effectful/es-loose"]
+                   {"loose":true,"noInterop":true}]]
     },
     "loose": {
       "passPerPreset": true,
@@ -14,8 +11,8 @@
                                 inlineJsExceptions:false,
                                 removeAsserts:true}],
         {
-          "plugins": [["babel-plugin-transform-es2015-modules-commonjs",
-                       {"loose":true}]]
+          "plugins": [["transform-es2015-modules-commonjs",
+                       {"loose":true,"noInterop":true}]]
         }
       ]
     }

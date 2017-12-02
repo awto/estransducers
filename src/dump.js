@@ -136,9 +136,10 @@ export const toConsole = Kit.curry(function toConsole(tag,s) {
   if (root.funcId)
     name += ":" + root.funcId.id
   if (BROWSER_DEBUG)
-    console.groupCollapsed(`dump %c${tag} %c${name}`,
-                           "color:orange;font-size:large",
-                           "color:coral")
+    (tag[0] === "+" ? console.group : console.groupCollapsed)(
+      `dump %c${tag} %c${name}`,
+      "color:orange;font-size:large",
+      "color:coral")
   else
     console.log(`dump ${tag}`)
   const col = Kit.pipe(convertCtrl,
