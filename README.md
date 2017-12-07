@@ -3,6 +3,9 @@
 
 Transducers as alternative to visitors for ESTree AST traversal.
 
+DEPRECATED: the repository is moved into [effectful.js](https://github.com/awto/effectfuljs) mono-repo, as
+[@effectful/transducers](https://github.com/awto/effectfuljs/tree/master/packages/transducers)
+
 ## Transducers in JavaScript
 
 The primary goal of transducers is to run a pipeline of transformations of an input
